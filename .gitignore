@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+
+.env*
+!.env.example
+
+*.log
+*.tmp
+*.cache
+.DS_Store
+
+docker-data/
+mongo-data/
+redis-data/
