@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+
+.git/
+.env
+.env.*
+!.env.example
+
+*.log
+docker-data/
+mongo-data/
+redis-data/
