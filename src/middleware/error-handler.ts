@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler } from "express";
+import mongoose from "mongoose";
 import { AppError } from "../shared/errors/app-error";
 
 type MalformedJsonError = SyntaxError & {
@@ -13,6 +14,23 @@ const isMalformedJsonError = (
   }
 
   return (error as MalformedJsonError).type === "entity.parse.failed";
+};
+
+const isDuplicateKeyError = (
+  error: unknown,
+): error is { code: number; keyValue?: Record<string, unknown> } => {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  return "code" in error && (error as { code?: unknown }).code === 11000;
+};
+
+const validationDetails = (error: mongoose.Error.ValidationError) => {
+  return Object.entries(error.errors).map(([field, fieldError]) => ({
+    field,
+    message: fieldError.message,
+  }));
 };
 
 export const errorHandler: ErrorRequestHandler = (
@@ -31,6 +49,38 @@ export const errorHandler: ErrorRequestHandler = (
       error: {
         code: "INVALID_JSON",
         message: "Request body contains invalid JSON.",
+      },
+    });
+    return;
+  }
+
+  if (isDuplicateKeyError(error)) {
+    response.status(409).json({
+      error: {
+        code: "RESOURCE_CONFLICT",
+        message: "A resource with the same unique value already exists.",
+      },
+    });
+    return;
+  }
+
+  if (error instanceof mongoose.Error.ValidationError) {
+    response.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request data is invalid.",
+        details: validationDetails(error),
+      },
+    });
+    return;
+  }
+
+  if (error instanceof mongoose.Error.CastError) {
+    response.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request contains an invalid value.",
+        details: [{ field: error.path, message: error.message }],
       },
     });
     return;
