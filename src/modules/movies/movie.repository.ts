@@ -20,6 +20,12 @@ export const findAllMovies = async (): Promise<MovieDocument[]> => {
   return MovieModel.find().sort({ releaseDate: -1, title: 1 }).exec();
 };
 
+export const findMovieById = async (
+  id: string,
+): Promise<MovieDocument | null> => {
+  return MovieModel.findById(id).exec();
+};
+
 export const updateMovieById = async (
   id: string,
   input: PersistedMovieUpdateInput,

@@ -2,6 +2,10 @@ import type { Server } from "node:http";
 import { buildApp } from "./app";
 import { env } from "./config/env";
 import {
+  connectToCache,
+  disconnectFromCache,
+} from "./infrastructure/cache/redis";
+import {
   connectToDatabase,
   disconnectFromDatabase,
 } from "./infrastructure/database/mongoose";
@@ -43,6 +47,7 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     await closeServer();
+    await disconnectFromCache();
     await disconnectFromDatabase();
     process.exit(0);
   } catch (error) {
@@ -57,9 +62,11 @@ process.once("SIGTERM", () => void shutdown("SIGTERM"));
 const start = async (): Promise<void> => {
   try {
     await connectToDatabase(env.mongoUri);
+    await connectToCache(env.redisUrl);
     server = await listen();
   } catch (error) {
     console.error("Failed to start the application.", error);
+    await disconnectFromCache();
     await disconnectFromDatabase();
     process.exitCode = 1;
   }

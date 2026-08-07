@@ -9,4 +9,5 @@ export const env = {
   port,
   mongoUri:
     process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/moviehub",
+  redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
 };

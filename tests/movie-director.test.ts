@@ -5,13 +5,26 @@ import { after, before, beforeEach, test } from "node:test";
 import mongoose from "mongoose";
 import { buildApp } from "../src/app";
 import {
+  connectToCache,
+  deleteKey,
+  disconnectFromCache,
+  getJson,
+  isCacheReady,
+} from "../src/infrastructure/cache/redis";
+import {
   connectToDatabase,
   disconnectFromDatabase,
 } from "../src/infrastructure/database/mongoose";
+import {
+  movieCacheKey,
+  movieListCacheKey,
+} from "../src/modules/movies/movie.cache";
+import type { MovieResponse } from "../src/modules/movies/movie.serializer";
 
 const testDatabaseUri =
   process.env.TEST_MONGODB_URI ??
   "mongodb://127.0.0.1:27017/moviehub_test";
+const testRedisUrl = process.env.TEST_REDIS_URL ?? "redis://127.0.0.1:6379";
 
 let server: Server;
 let baseUrl: string;
@@ -52,7 +65,12 @@ const resourceId = (body: unknown): string => {
 };
 
 before(async () => {
-  await connectToDatabase(testDatabaseUri);
+  await Promise.all([
+    connectToDatabase(testDatabaseUri),
+    connectToCache(testRedisUrl),
+  ]);
+
+  assert.equal(isCacheReady(), true, "Redis must be running for endpoint tests.");
 
   server = createServer(buildApp());
   await new Promise<void>((resolve, reject) => {
@@ -70,7 +88,10 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await mongoose.connection.dropDatabase();
+  await Promise.all([
+    mongoose.connection.dropDatabase(),
+    deleteKey(movieListCacheKey),
+  ]);
 });
 
 after(async () => {
@@ -85,6 +106,7 @@ after(async () => {
     });
   });
 
+  await disconnectFromCache();
   await disconnectFromDatabase();
 });
 
@@ -118,9 +140,20 @@ test("supports the director and movie lifecycle", async () => {
   assert.equal(movie.status, 201);
   const movieId = resourceId(movie.body);
 
+  const movieById = await requestJson(`/api/v1/movies/${movieId}`);
+  assert.equal(movieById.status, 200);
+  assert.equal(
+    (movieById.body as { data: { id: string } }).data.id,
+    movieId,
+  );
+
   const movies = await requestJson("/api/v1/movies");
   assert.equal(movies.status, 200);
   assert.equal((movies.body as { data: unknown[] }).data.length, 1);
+  assert.equal(
+    (await getJson<MovieResponse[]>(movieListCacheKey))?.length,
+    1,
+  );
 
   const updatedMovie = await requestJson(`/api/v1/movies/${movieId}`, {
     method: "PATCH",
@@ -135,11 +168,17 @@ test("supports the director and movie lifecycle", async () => {
     (updatedMovie.body as { data: { rating: number } }).data.rating,
     9,
   );
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey), null);
+  assert.equal(
+    (await getJson<MovieResponse>(movieCacheKey(movieId)))?.rating,
+    9,
+  );
 
   const deletedMovie = await requestJson(`/api/v1/movies/${movieId}`, {
     method: "DELETE",
   });
   assert.equal(deletedMovie.status, 204);
+  assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId)), null);
 
   const deletedDirector = await requestJson(`/api/v1/directors/${directorId}`, {
     method: "DELETE",
