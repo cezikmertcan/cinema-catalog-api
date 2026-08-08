@@ -270,6 +270,7 @@ Movie reads use a cache-aside strategy:
 - List entries expire after 60 seconds and detail entries expire after 300 seconds.
 - Movie create, update and delete operations invalidate both list variants.
 - Update and delete operations invalidate both detail variants for the affected movie.
+- Director updates invalidate the expanded movie list and all expanded movie detail entries that reference the updated director.
 
 This prevents a response without the director object from being returned for an expanded request, and ensures mutations do not leave stale relationship data in Redis.
 

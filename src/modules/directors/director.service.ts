@@ -9,9 +9,11 @@ import {
   updateDirectorById,
 } from "./director.repository";
 import {
+  findMovieIdsByDirectorId,
   findMoviesByDirectorIds,
   moviesExistForDirector,
 } from "../movies/movie.repository";
+import { invalidateMovieDirectorCaches } from "../movies/movie.cache";
 import { serializeMovie } from "../movies/movie.serializer";
 import type { MovieDocument } from "../movies/movie.model";
 import type { DirectorDocument } from "./director.model";
@@ -119,6 +121,9 @@ export const updateDirector = async (
   if (director === null) {
     throw directorNotFound(directorId);
   }
+
+  const movieIds = await findMovieIdsByDirectorId(directorId);
+  await invalidateMovieDirectorCaches(movieIds);
 
   return serializeDirector(director);
 };

@@ -493,3 +493,114 @@ test("supports director reads, updates and movie expansion", async () => {
     },
   });
 });
+
+test("invalidates expanded movie caches when a director is updated", async () => {
+  const director = await requestJson("/api/v1/directors", {
+    method: "POST",
+    body: JSON.stringify({
+      firstName: "Sofia",
+      secondName: "Coppola",
+      birthDate: "1971-05-14",
+      bio: "American filmmaker.",
+    }),
+  });
+
+  assert.equal(director.status, 201);
+  const directorId = resourceId(director.body);
+
+  const movieIds: string[] = [];
+  for (const movieInput of [
+    {
+      title: "Lost in Translation",
+      description: "Two strangers form an unexpected connection.",
+      releaseDate: "2003-09-05",
+      genre: "Drama",
+      rating: 7.7,
+      imdbId: "tt0335266",
+    },
+    {
+      title: "The Virgin Suicides",
+      description: "A family story observed through the eyes of neighborhood boys.",
+      releaseDate: "1999-04-21",
+      genre: "Drama",
+      rating: 7.2,
+      imdbId: "tt0159097",
+    },
+  ]) {
+    const movie = await requestJson("/api/v1/movies", {
+      method: "POST",
+      body: JSON.stringify({ ...movieInput, directorId }),
+    });
+
+    assert.equal(movie.status, 201);
+    movieIds.push(resourceId(movie.body));
+  }
+
+  for (const movieId of movieIds) {
+    const expandedMovie = await requestJson(
+      `/api/v1/movies/${movieId}?include=director`,
+    );
+
+    assert.equal(expandedMovie.status, 200);
+    assert.equal(
+      (expandedMovie.body as { data: { director: { firstName: string } } }).data
+        .director.firstName,
+      "Sofia",
+    );
+  }
+
+  const expandedMovies = await requestJson(
+    "/api/v1/movies?include=director",
+  );
+  assert.equal(expandedMovies.status, 200);
+  assert.equal(
+    (expandedMovies.body as { data: Array<{ director: { firstName: string } }> })
+      .data.length,
+    2,
+  );
+
+  for (const movieId of movieIds) {
+    assert.notEqual(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
+  }
+  assert.notEqual(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+
+  const updatedDirector = await requestJson(
+    `/api/v1/directors/${directorId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        firstName: "Sofia Maria",
+      }),
+    },
+  );
+
+  assert.equal(updatedDirector.status, 200);
+
+  for (const movieId of movieIds) {
+    assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
+  }
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+
+  for (const movieId of movieIds) {
+    const refreshedMovie = await requestJson(
+      `/api/v1/movies/${movieId}?include=director`,
+    );
+
+    assert.equal(refreshedMovie.status, 200);
+    assert.equal(
+      (refreshedMovie.body as { data: { director: { firstName: string } } }).data
+        .director.firstName,
+      "Sofia Maria",
+    );
+  }
+
+  const refreshedMovies = await requestJson(
+    "/api/v1/movies?include=director",
+  );
+  assert.equal(refreshedMovies.status, 200);
+  assert.equal(
+    (refreshedMovies.body as { data: Array<{ director: { firstName: string } }> })
+      .data.every((movie) => movie.director.firstName === "Sofia Maria"),
+    true,
+  );
+});

@@ -67,6 +67,18 @@ export const findMoviesByDirectorIds = async (
     .exec();
 };
 
+export const findMovieIdsByDirectorId = async (
+  directorId: string,
+): Promise<string[]> => {
+  const movies = await MovieModel.find({
+    directorId: new Types.ObjectId(directorId),
+  })
+    .select({ _id: 1 })
+    .exec();
+
+  return movies.map((movie) => movie._id.toString());
+};
+
 export const moviesExistForDirector = async (id: string): Promise<boolean> => {
   return Boolean(await MovieModel.exists({ directorId: new Types.ObjectId(id) }));
 };
