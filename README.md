@@ -9,6 +9,7 @@ MovieHub is a RESTful backend for managing movies and directors. It uses a layer
 - MongoDB with Mongoose
 - Redis
 - Docker and Docker Compose
+- Swagger UI with an OpenAPI 3 document
 - Node.js test runner
 - Postman for request collection and manual API testing
 
@@ -68,6 +69,12 @@ route -> controller -> validation -> service -> repository/infrastructure
 
 The API is available at `http://localhost:3000`. Docker Compose waits for the MongoDB and Redis health checks before starting the API container.
 
+The root page and API documentation do not require database or cache access:
+
+- `http://localhost:3000/` — API landing page
+- `http://localhost:3000/docs` — Swagger UI
+- `http://localhost:3000/openapi.json` — OpenAPI JSON document
+
 Stop the stack with:
 
 ```bash
@@ -111,6 +118,9 @@ All domain routes use the `/api/v1` prefix.
 
 | Method | Path | Description | Success |
 | --- | --- | --- | --- |
+| `GET` | `/` | Opens the API landing page | `200` |
+| `GET` | `/docs` | Opens the Swagger UI | `200` |
+| `GET` | `/openapi.json` | Returns the OpenAPI document | `200` |
 | `GET` | `/health` | Checks MongoDB and Redis connectivity and latency | `200` or `503` |
 | `POST` | `/api/v1/directors` | Creates a director | `201` |
 | `DELETE` | `/api/v1/directors/:id` | Deletes an unreferenced director | `204` |
@@ -119,6 +129,12 @@ All domain routes use the `/api/v1` prefix.
 | `GET` | `/api/v1/movies/:id` | Gets one movie | `200` |
 | `PATCH` | `/api/v1/movies/:id` | Updates one or more movie fields | `200` |
 | `DELETE` | `/api/v1/movies/:id` | Deletes a movie | `204` |
+
+### API documentation
+
+Swagger UI is served from `/docs` and is backed by the OpenAPI document returned from `/openapi.json`. It documents the health endpoint, all movie and director operations, the `include=director` query parameter, validation errors and the `409 DIRECTOR_HAS_MOVIES` relationship conflict.
+
+The root page at `/` provides links to both documentation endpoints and the dependency health check.
 
 ### Optional director expansion
 
@@ -224,7 +240,7 @@ npm run build
 npm test
 ```
 
-The tests cover dependency health, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, input validation and not-found behavior.
+The tests cover dependency health, the landing page, Swagger/OpenAPI routes, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, input validation and not-found behavior.
 
 ## Deployment notes
 

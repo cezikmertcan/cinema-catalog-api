@@ -48,6 +48,25 @@ const requestJson = async (
   };
 };
 
+const requestText = async (
+  path: string,
+  init: RequestInit = {},
+): Promise<{ status: number; body: string; contentType: string | null }> => {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+
+  return {
+    status: response.status,
+    body: await response.text(),
+    contentType: response.headers.get("content-type"),
+  };
+};
+
 const resourceId = (body: unknown): string => {
   if (
     typeof body !== "object" ||
@@ -129,6 +148,31 @@ test("reports application and dependency health", async () => {
   assert.equal(body.services.redis.status, "up");
   assert.equal(typeof body.services.mongodb.latencyMs, "number");
   assert.equal(typeof body.services.redis.latencyMs, "number");
+});
+
+test("serves the landing page and Swagger documentation", async () => {
+  const root = await requestText("/");
+
+  assert.equal(root.status, 200);
+  assert.match(root.contentType ?? "", /text\/html/);
+  assert.match(root.body, /href="\/docs"/);
+  assert.match(root.body, /href="\/openapi\.json"/);
+
+  const openApi = await requestJson("/openapi.json");
+  assert.equal(openApi.status, 200);
+
+  const document = openApi.body as {
+    openapi: string;
+    paths: Record<string, unknown>;
+  };
+  assert.equal(document.openapi, "3.0.3");
+  assert.equal(typeof document.paths["/api/v1/movies"], "object");
+  assert.equal(typeof document.paths["/api/v1/movies/{id}"], "object");
+
+  const docs = await requestText("/docs");
+  assert.equal(docs.status, 200);
+  assert.match(docs.contentType ?? "", /text\/html/);
+  assert.match(docs.body, /Swagger UI/);
 });
 
 test("supports the director and movie lifecycle", async () => {
