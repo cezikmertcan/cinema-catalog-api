@@ -110,6 +110,26 @@ after(async () => {
   await disconnectFromDatabase();
 });
 
+test("reports application and dependency health", async () => {
+  const response = await requestJson("/health");
+
+  assert.equal(response.status, 200);
+
+  const body = response.body as {
+    status: string;
+    services: {
+      mongodb: { status: string; latencyMs: number };
+      redis: { status: string; latencyMs: number };
+    };
+  };
+
+  assert.equal(body.status, "ok");
+  assert.equal(body.services.mongodb.status, "up");
+  assert.equal(body.services.redis.status, "up");
+  assert.equal(typeof body.services.mongodb.latencyMs, "number");
+  assert.equal(typeof body.services.redis.latencyMs, "number");
+});
+
 test("supports the director and movie lifecycle", async () => {
   const director = await requestJson("/api/v1/directors", {
     method: "POST",

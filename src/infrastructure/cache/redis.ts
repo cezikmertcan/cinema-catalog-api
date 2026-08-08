@@ -1,8 +1,10 @@
 import { createClient, type RedisClientType } from "redis";
+import type { DependencyHealth } from "../../shared/health/dependency-health";
 
 type RedisClient = RedisClientType<{}, {}, {}, 3, {}>;
 
 let client: RedisClient | undefined;
+let connectionPromise: Promise<void> | undefined;
 
 export const isCacheReady = (): boolean => {
   return client?.isReady === true;
@@ -13,9 +15,15 @@ export const connectToCache = async (url: string): Promise<void> => {
     return;
   }
 
+  if (connectionPromise !== undefined) {
+    await connectionPromise;
+    return;
+  }
+
   const nextClient = createClient<{}, {}, {}, 3, {}>({
     url,
     socket: {
+      connectTimeout: 5000,
       reconnectStrategy: false,
     },
   });
@@ -24,13 +32,20 @@ export const connectToCache = async (url: string): Promise<void> => {
     console.error("Redis client error.", error);
   });
 
-  try {
-    await nextClient.connect();
-    client = nextClient;
-  } catch (error) {
-    console.error("Redis is unavailable. Continuing without cache.", error);
-    nextClient.destroy();
-  }
+  connectionPromise = nextClient
+    .connect()
+    .then(() => {
+      client = nextClient;
+    })
+    .catch((error) => {
+      console.error("Redis is unavailable. Continuing without cache.", error);
+      nextClient.destroy();
+    })
+    .finally(() => {
+      connectionPromise = undefined;
+    });
+
+  await connectionPromise;
 };
 
 export const disconnectFromCache = async (): Promise<void> => {
@@ -43,6 +58,36 @@ export const disconnectFromCache = async (): Promise<void> => {
 
   if (activeClient.isOpen) {
     await activeClient.close();
+  }
+
+  connectionPromise = undefined;
+};
+
+export const checkCacheHealth = async (
+  url: string,
+): Promise<DependencyHealth> => {
+  const startedAt = Date.now();
+
+  try {
+    await connectToCache(url);
+
+    if (client?.isReady !== true) {
+      throw new Error("Redis connection is not ready.");
+    }
+
+    await client.ping();
+
+    return {
+      status: "up",
+      latencyMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    console.error("Redis health check failed.", error);
+
+    return {
+      status: "down",
+      latencyMs: Date.now() - startedAt,
+    };
   }
 };
 

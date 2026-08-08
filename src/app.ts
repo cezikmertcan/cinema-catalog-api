@@ -1,7 +1,13 @@
 import express, { type Express, type RequestHandler } from "express";
 import { env } from "./config/env";
-import { connectToCache } from "./infrastructure/cache/redis";
-import { connectToDatabase } from "./infrastructure/database/mongoose";
+import {
+  checkCacheHealth,
+  connectToCache,
+} from "./infrastructure/cache/redis";
+import {
+  checkDatabaseHealth,
+  connectToDatabase,
+} from "./infrastructure/database/mongoose";
 import { errorHandler } from "./middleware/error-handler";
 import { notFoundHandler } from "./middleware/not-found-handler";
 import { directorRouter } from "./modules/directors/director.routes";
@@ -21,15 +27,30 @@ const dependencyMiddleware: RequestHandler = async (
   }
 };
 
+const healthHandler: RequestHandler = async (_request, response) => {
+  const [database, cache] = await Promise.all([
+    checkDatabaseHealth(env.mongoUri),
+    checkCacheHealth(env.redisUrl),
+  ]);
+  const isHealthy = database.status === "up" && cache.status === "up";
+
+  response.setHeader("Cache-Control", "no-store");
+  response.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? "ok" : "degraded",
+    services: {
+      mongodb: database,
+      redis: cache,
+    },
+  });
+};
+
 export const buildApp = (): Express => {
   const app = express();
 
   app.disable("x-powered-by");
   app.use(express.json());
 
-  app.get("/health", (_request, response) => {
-    response.status(200).json({ status: "ok" });
-  });
+  app.get("/health", healthHandler);
 
   app.use(dependencyMiddleware);
   app.use("/api/v1/directors", directorRouter);
