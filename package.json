@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/movie-director.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "test:typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "keywords": [],
@@ -17,7 +17,8 @@
     "express": "^5.2.1",
     "mongoose": "^9.9.1",
     "redis": "^6.2.0",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

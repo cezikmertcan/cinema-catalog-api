@@ -10,6 +10,7 @@ MovieHub is a RESTful backend for managing movies and directors. It uses a layer
 - Redis
 - Docker and Docker Compose
 - Swagger UI with an OpenAPI 3 document
+- Zod for request schema validation
 - Node.js test runner
 - Postman for request collection and manual API testing
 
@@ -217,6 +218,19 @@ Errors use a consistent shape:
 
 Malformed JSON, invalid fields and invalid identifiers return `400`; missing resources return `404`; relationship or uniqueness conflicts return `409`; unexpected failures return `500`.
 
+### Request validation
+
+Request bodies are validated with strict Zod schemas before they reach the service layer:
+
+- Unknown body fields are rejected instead of silently ignored.
+- Required strings are trimmed and checked for non-empty values and maximum length.
+- `rating` must be a finite JSON number between `0` and `10`; decimal values such as `8.8` are supported.
+- `releaseDate` and `birthDate` must use the exact `YYYY-MM-DD` calendar format, such as `2026-08-17`. Invalid calendar dates such as `2026-02-30` are rejected.
+- Date strings are converted to UTC `Date` values at the application boundary and serialized back as `YYYY-MM-DD`.
+- Movie updates remain partial, but an empty update body is rejected.
+
+Zod handles transport-level shape and type validation. Domain rules such as director existence, the director deletion relationship conflict and unique database constraints remain in the service and persistence layers. Mongoose validation is also retained as a final persistence safeguard.
+
 ## Caching
 
 Movie reads use a cache-aside strategy:
@@ -240,7 +254,7 @@ npm run build
 npm test
 ```
 
-The tests cover dependency health, the landing page, Swagger/OpenAPI routes, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, input validation and not-found behavior.
+`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
 
 ## Deployment notes
 

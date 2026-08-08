@@ -1,89 +1,41 @@
+import { z } from "zod";
 import {
-  assertAllowedFields,
-  assertAtLeastOneField,
-  hasField,
-  parseObjectBody,
-  readDate,
-  readNumber,
-  readObjectId,
-  readString,
-  type JsonObject,
+  boundedNumber,
+  objectIdSchema,
+  parseSchema,
+  requiredString,
+  strictDate,
 } from "../../shared/validation/request-validation";
-import { AppError } from "../../shared/errors/app-error";
 import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
 
-const movieFields = [
-  "title",
-  "description",
-  "releaseDate",
-  "genre",
-  "rating",
-  "imdbId",
-  "directorId",
-] as const;
+const movieSchema = z
+  .object({
+    title: requiredString("title", 200),
+    description: requiredString("description", 5000),
+    releaseDate: strictDate(),
+    genre: requiredString("genre", 100),
+    rating: boundedNumber("rating", 0, 10),
+    imdbId: requiredString("imdbId", 20).regex(
+      /^tt\d+$/,
+      "imdbId must be a valid IMDb identifier.",
+    ),
+    directorId: objectIdSchema("directorId"),
+  })
+  .strict();
 
-const imdbIdPattern = /^tt\d+$/;
-
-const readImdbId = (input: JsonObject): string => {
-  return readString(input, "imdbId", {
-    maxLength: 20,
-    pattern: imdbIdPattern,
-    patternMessage: "imdbId must be a valid IMDb identifier.",
+const movieUpdateSchema = movieSchema
+  .partial()
+  .strict()
+  .refine((input) => Object.keys(input).length > 0, {
+    message: "At least one movie field must be provided for update.",
   });
-};
 
 export const parseCreateMovie = (body: unknown): CreateMovieInput => {
-  const input = parseObjectBody(body);
-  assertAllowedFields(input, movieFields);
-
-  return {
-    title: readString(input, "title", { maxLength: 200 }),
-    description: readString(input, "description", { maxLength: 5000 }),
-    releaseDate: readDate(input, "releaseDate"),
-    genre: readString(input, "genre", { maxLength: 100 }),
-    rating: readNumber(input, "rating", { min: 0, max: 10 }),
-    imdbId: readImdbId(input),
-    directorId: readObjectId(input.directorId, "directorId"),
-  };
+  return parseSchema(movieSchema, body);
 };
 
 export const parseUpdateMovie = (body: unknown): UpdateMovieInput => {
-  const input = parseObjectBody(body);
-  assertAllowedFields(input, movieFields);
-
-  const update: UpdateMovieInput = {};
-
-  if (hasField(input, "title")) {
-    update.title = readString(input, "title", { maxLength: 200 });
-  }
-
-  if (hasField(input, "description")) {
-    update.description = readString(input, "description", { maxLength: 5000 });
-  }
-
-  if (hasField(input, "releaseDate")) {
-    update.releaseDate = readDate(input, "releaseDate");
-  }
-
-  if (hasField(input, "genre")) {
-    update.genre = readString(input, "genre", { maxLength: 100 });
-  }
-
-  if (hasField(input, "rating")) {
-    update.rating = readNumber(input, "rating", { min: 0, max: 10 });
-  }
-
-  if (hasField(input, "imdbId")) {
-    update.imdbId = readImdbId(input);
-  }
-
-  if (hasField(input, "directorId")) {
-    update.directorId = readObjectId(input.directorId, "directorId");
-  }
-
-  assertAtLeastOneField(update, "At least one movie field must be provided for update.");
-
-  return update;
+  return parseSchema(movieUpdateSchema, body);
 };
 
 export const parseIncludeDirector = (value: unknown): boolean => {
@@ -91,13 +43,9 @@ export const parseIncludeDirector = (value: unknown): boolean => {
     return false;
   }
 
-  if (value !== "director") {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      'include must be "director" when provided.',
-    );
-  }
+  parseSchema(z.literal("director"), value, {
+    errorMessage: 'include must be "director" when provided.',
+  });
 
   return true;
 };

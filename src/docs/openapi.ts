@@ -402,6 +402,7 @@ export const openApiDocument = {
           birthDate: {
             type: "string",
             format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
             example: "1970-07-30",
           },
           bio: {
@@ -430,6 +431,7 @@ export const openApiDocument = {
           birthDate: {
             type: "string",
             format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
             example: "1970-07-30",
           },
           bio: {
@@ -464,6 +466,7 @@ export const openApiDocument = {
           releaseDate: {
             type: "string",
             format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
             example: "2010-07-16",
           },
           genre: {
@@ -507,6 +510,7 @@ export const openApiDocument = {
           releaseDate: {
             type: "string",
             format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
           },
           genre: {
             type: "string",
@@ -556,6 +560,7 @@ export const openApiDocument = {
           releaseDate: {
             type: "string",
             format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
             example: "2010-07-16",
           },
           genre: {
