@@ -1,8 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { AppError } from "../src/shared/errors/app-error";
+import { DirectorModel } from "../src/modules/directors/director.model";
 import {
   parseCreateDirector,
+  parseDirectorQuery,
   parseDirectorListQuery,
   parseIncludeMovies,
   parseUpdateDirector,
@@ -13,6 +15,7 @@ import {
   parseMovieListQuery,
   parseUpdateMovie,
 } from "../src/modules/movies/movie.validation";
+import { MovieModel } from "../src/modules/movies/movie.model";
 
 const directorInput = {
   firstName: "Christopher",
@@ -137,12 +140,23 @@ test("parses and validates collection pagination", () => {
     pagination: { page: 1, limit: 20 },
   });
   assert.deepEqual(
-    parseDirectorListQuery({ include: "movies", page: "2", limit: "50" }),
+    parseDirectorListQuery({
+      include: "movies",
+      page: "2",
+      limit: "50",
+      moviesPage: "3",
+      moviesLimit: "10",
+    }),
     {
       includeMovies: true,
       pagination: { page: 2, limit: 50 },
+      moviesPagination: { page: 3, limit: 10 },
     },
   );
+  assert.deepEqual(parseDirectorQuery({ include: "movies" }), {
+    includeMovies: true,
+    moviesPagination: { page: 1, limit: 20 },
+  });
 
   assertValidationError(
     () => parseMovieListQuery({ page: "0" }),
@@ -159,5 +173,40 @@ test("parses and validates collection pagination", () => {
   assertValidationError(
     () => parseDirectorListQuery({ page: "1", unsupported: "value" }),
     "Request contains unsupported fields.",
+  );
+  assertValidationError(
+    () => parseDirectorQuery({ include: "movies", moviesLimit: "101" }),
+    "moviesLimit must be at most 100.",
+  );
+  assertValidationError(
+    () => parseDirectorQuery({ moviesPage: "2" }),
+    "moviesPage and moviesLimit require include=movies.",
+  );
+});
+
+test("declares compound indexes for collection and relation queries", () => {
+  const directorIndexes = DirectorModel.schema.indexes();
+  const movieIndexes = MovieModel.schema.indexes();
+
+  assert.ok(
+    directorIndexes.some(
+      ([fields]) =>
+        JSON.stringify(fields) ===
+        JSON.stringify({ firstName: 1, secondName: 1 }),
+    ),
+  );
+  assert.ok(
+    movieIndexes.some(
+      ([fields]) =>
+        JSON.stringify(fields) ===
+        JSON.stringify({ releaseDate: -1, title: 1 }),
+    ),
+  );
+  assert.ok(
+    movieIndexes.some(
+      ([fields]) =>
+        JSON.stringify(fields) ===
+        JSON.stringify({ directorId: 1, releaseDate: -1, title: 1 }),
+    ),
   );
 });

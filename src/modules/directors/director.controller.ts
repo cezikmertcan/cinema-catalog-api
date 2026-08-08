@@ -2,8 +2,8 @@ import type { RequestHandler } from "express";
 import { asyncHandler } from "../../shared/http/async-handler";
 import {
   parseCreateDirector,
+  parseDirectorQuery,
   parseDirectorListQuery,
-  parseIncludeMovies,
   parseUpdateDirector,
 } from "./director.validation";
 import {
@@ -25,15 +25,23 @@ const create: RequestHandler = async (request, response) => {
 };
 
 const list: RequestHandler = async (request, response) => {
-  const { includeMovies, pagination } = parseDirectorListQuery(request.query);
-  const directors = await listDirectors({ includeMovies, pagination });
+  const { includeMovies, pagination, moviesPagination } =
+    parseDirectorListQuery(request.query);
+  const directors = await listDirectors({
+    includeMovies,
+    pagination,
+    moviesPagination,
+  });
 
   response.status(200).json(directors);
 };
 
 const get: RequestHandler = async (request, response) => {
-  const includeMovies = parseIncludeMovies(request.query.include);
-  const director = await getDirector(request.params.id, { includeMovies });
+  const { includeMovies, moviesPagination } = parseDirectorQuery(request.query);
+  const director = await getDirector(request.params.id, {
+    includeMovies,
+    moviesPagination,
+  });
 
   response.status(200).json({
     data: director,

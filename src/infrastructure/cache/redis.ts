@@ -129,6 +129,29 @@ export const setJson = async <T>(
   }, undefined);
 };
 
+export const getOrInitializeInteger = async (
+  key: string,
+  initialValue: number,
+): Promise<number> => {
+  return withCache(async (redisClient) => {
+    await redisClient.set(key, String(initialValue), { NX: true });
+    const value = await redisClient.get(key);
+    const parsedValue = value === null ? initialValue : Number(value);
+
+    return Number.isSafeInteger(parsedValue) ? parsedValue : initialValue;
+  }, initialValue);
+};
+
+export const incrementInteger = async (
+  key: string,
+  initialValue: number,
+): Promise<number> => {
+  return withCache(async (redisClient) => {
+    await redisClient.set(key, String(initialValue), { NX: true });
+    return redisClient.incr(key);
+  }, initialValue);
+};
+
 export const deleteKey = async (key: string): Promise<void> => {
   await withCache(async (redisClient) => {
     await redisClient.del(key);

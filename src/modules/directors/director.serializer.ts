@@ -1,3 +1,4 @@
+import type { PaginationMeta } from "../../shared/pagination/pagination";
 import type { DirectorDocument } from "./director.model";
 import type { MovieResponse } from "../movies/movie.serializer";
 
@@ -11,6 +12,7 @@ export interface DirectorResponse {
 
 export interface DirectorWithMoviesResponse extends DirectorResponse {
   movies: MovieResponse[];
+  moviesMeta: PaginationMeta;
 }
 
 export type DirectorQueryResponse =

@@ -20,6 +20,7 @@ import {
 import {
   movieCacheKey,
   movieCacheTtlSeconds,
+  getMovieListCacheVersion,
   movieListCacheKey,
   movieListCacheTtlSeconds,
   invalidateMovieListCaches,
@@ -68,7 +69,12 @@ export const listMovies = async (
 ): Promise<PaginatedResponse<MovieResponse>> => {
   const includeDirector = options.includeDirector === true;
   const pagination = options.pagination ?? defaultPagination;
-  const cacheKey = movieListCacheKey({ includeDirector, ...pagination });
+  const cacheVersion = await getMovieListCacheVersion(includeDirector);
+  const cacheKey = movieListCacheKey({
+    includeDirector,
+    ...pagination,
+    version: cacheVersion,
+  });
   const cachedMovies = await getJson<PaginatedResponse<MovieResponse>>(cacheKey);
 
   if (cachedMovies !== null) {

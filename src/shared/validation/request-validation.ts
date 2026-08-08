@@ -139,7 +139,7 @@ export const toObjectId = (value: string): Types.ObjectId => {
   return new Types.ObjectId(value);
 };
 
-const positiveIntegerQuery = (field: string) =>
+export const positiveIntegerQuery = (field: string) =>
   z
     .string()
     .regex(/^[1-9]\d*$/, `${field} must be a positive integer.`)

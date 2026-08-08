@@ -19,7 +19,7 @@ MovieHub is a RESTful backend for managing movies and directors. It uses a layer
 - A movie stores a required `directorId` reference to a director.
 - Movie responses return `directorId` by default. This keeps the default payload small and avoids an implicit database join.
 - `GET /api/v1/movies` and `GET /api/v1/movies/:id` support `?include=director`. When requested, the response keeps `directorId` and adds a serialized `director` object.
-- Director reads return only director fields by default. `GET /api/v1/directors` and `GET /api/v1/directors/:id` support `?include=movies` when the related movie list is needed.
+- Director reads return only director fields by default. `GET /api/v1/directors` and `GET /api/v1/directors/:id` support `?include=movies` when the related movie list is needed; `moviesPage` and `moviesLimit` paginate each nested movie array.
 - Movie and director collection endpoints support one-based `page` and `limit` query parameters. Responses include `total`, `totalPages`, `hasNext` and `hasPrevious` metadata; `limit` defaults to `20` and is capped at `100`.
 - Director fields can be partially updated with `PATCH /api/v1/directors/:id`; an empty update body is rejected.
 - A director cannot be deleted while at least one movie references it. The API returns `409 Conflict` with the `DIRECTOR_HAS_MOVIES` error code. The client must delete or reassign the movies first; the API does not cascade-delete them.
@@ -64,6 +64,8 @@ route -> controller -> validation -> service -> repository/infrastructure
    ```bash
    cp .env.example .env
    ```
+
+   The `dev`, `start` and `test` scripts load this file with Node.js `--env-file-if-exists`. Existing shell or hosting environment variables remain the source of truth when they are provided.
 
 3. Start the API, MongoDB and Redis:
 
@@ -200,7 +202,7 @@ Movie and director collection endpoints use the same pagination contract:
 
 ```http
 GET /api/v1/movies?page=1&limit=20
-GET /api/v1/directors?page=2&limit=10&include=movies
+GET /api/v1/directors?page=2&limit=10&include=movies&moviesPage=1&moviesLimit=5
 ```
 
 The response contains the page data and metadata:
@@ -219,7 +221,7 @@ The response contains the page data and metadata:
 }
 ```
 
-`page` must be a positive integer. `limit` must be between `1` and `100`. On `GET /api/v1/directors?include=movies`, pagination applies to the director collection; the `movies` array for each returned director is currently loaded as a complete relation. Nested movie pagination is intentionally kept as a separate future contract decision.
+`page` and `moviesPage` must be positive integers. `limit` and `moviesLimit` must be between `1` and `100`. The top-level `page` and `limit` paginate the director collection; `moviesPage` and `moviesLimit` paginate the `movies` array for every returned director. Nested pagination parameters require `include=movies` and default to `1` and `20`.
 
 ### Director reads and updates
 
@@ -233,10 +235,33 @@ Use `include=movies` to include the movies that reference the director:
 
 ```http
 GET /api/v1/directors?include=movies
-GET /api/v1/directors/:id?include=movies
+GET /api/v1/directors/:id?include=movies&moviesPage=1&moviesLimit=5
 ```
 
-The expanded director response adds a `movies` array. Each movie keeps its `directorId` and does not recursively include a director object, preventing circular response expansion.
+The expanded director response adds a paginated `movies` array and a `moviesMeta` object. Each movie keeps its `directorId` and does not recursively include a director object, preventing circular response expansion:
+
+```json
+{
+  "data": {
+    "id": "665f2c5b7c2f5c4f8f0d2222",
+    "firstName": "Christopher",
+    "secondName": "Nolan",
+    "birthDate": "1970-07-30",
+    "bio": "British-American filmmaker.",
+    "movies": [],
+    "moviesMeta": {
+      "page": 1,
+      "limit": 5,
+      "total": 12,
+      "totalPages": 3,
+      "hasNext": true,
+      "hasPrevious": false
+    }
+  }
+}
+```
+
+The same nested pagination contract applies to every director in `GET /api/v1/directors?include=movies`.
 
 Director updates are partial and use the same strict validation rules as director creation:
 
@@ -297,11 +322,25 @@ Movie reads use a cache-aside strategy:
 - `include=director` responses use separate `:with-director` key variants.
 - List entries expire after 60 seconds and detail entries expire after 300 seconds.
 - Every movie list cache key includes its `page`, `limit` and `include=director` response variant.
-- Movie create, update and delete operations invalidate all paginated movie list variants through a non-blocking Redis scan.
+- Movie list variants use a Redis-backed generation counter. Movie create, update and delete operations increment the relevant generations instead of scanning every cached key; stale generations expire naturally through the normal list TTL.
 - Update and delete operations invalidate both detail variants for the affected movie.
 - Director updates invalidate the expanded movie list and all expanded movie detail entries that reference the updated director.
 
+This avoids making every movie mutation proportional to the number of cached pagination variants. The generic Redis `SCAN` helper remains available for test cleanup and operational tooling, but it is not on the production mutation path.
+
 This prevents a response without the director object from being returned for an expanded request, and ensures mutations do not leave stale relationship data in Redis.
+
+### MongoDB query indexes
+
+The models define compound indexes for the identified access patterns:
+
+- Directors: `{ firstName: 1, secondName: 1 }` for deterministic director collection ordering.
+- Movies: `{ releaseDate: -1, title: 1 }` for the movie collection ordering.
+- Movies: `{ directorId: 1, releaseDate: -1, title: 1 }` for nested director movie pagination and director reference checks.
+
+The `_id` field remains the final deterministic tie-breaker in the application sort, while MongoDB uses the compound prefixes above for the filter and primary sort fields. Query plans can be inspected with MongoDB `explain("executionStats")` before adding further indexes.
+
+The API explicitly ensures these indexes after establishing the MongoDB connection, so production startup does not depend on Mongoose auto-index defaults.
 
 ## Tests and checks
 
@@ -314,7 +353,7 @@ npm run build
 npm test
 ```
 
-`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, director reads and updates, `include=movies`, collection pagination, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
+`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, director reads and updates, `include=movies` with nested pagination metadata, collection pagination, the director/movie lifecycle, optional director expansion, cache generation invalidation, the director deletion conflict, strict date and request-shape validation, input validation, query index declarations and not-found behavior.
 
 ## Deployment notes
 

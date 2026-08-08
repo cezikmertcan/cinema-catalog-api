@@ -75,20 +75,31 @@ export const findMovieById = async (
   return query.exec();
 };
 
-export const findMoviesByDirectorIds = async (
+export const findPaginatedMoviesByDirectorIds = async (
   directorIds: readonly string[],
-): Promise<MovieDocument[]> => {
-  if (directorIds.length === 0) {
-    return [];
-  }
+  pagination: PaginationOptions,
+): Promise<Map<string, PaginatedQueryResult<MovieDocument>>> => {
+  const results = await Promise.all(
+    directorIds.map(async (directorId) => {
+      const filter = { directorId: new Types.ObjectId(directorId) };
+      const query = MovieModel.find(filter).sort({
+        releaseDate: -1,
+        title: 1,
+        _id: 1,
+      });
 
-  return MovieModel.find({
-    directorId: {
-      $in: directorIds.map((id) => new Types.ObjectId(id)),
-    },
-  })
-    .sort({ releaseDate: -1, title: 1, _id: 1 })
-    .exec();
+      applyPagination(query, pagination);
+
+      const [movies, total] = await Promise.all([
+        query.exec(),
+        MovieModel.countDocuments(filter).exec(),
+      ]);
+
+      return [directorId, { items: movies, total }] as const;
+    }),
+  );
+
+  return new Map(results);
 };
 
 export const findMovieIdsByDirectorId = async (

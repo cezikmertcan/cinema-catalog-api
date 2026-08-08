@@ -37,5 +37,10 @@ const directorSchema = new Schema<DirectorEntity>(
   },
 );
 
+directorSchema.index(
+  { firstName: 1, secondName: 1 },
+  { name: "directors_name_sort" },
+);
+
 export const DirectorModel = model<DirectorEntity>("Director", directorSchema);
 export type DirectorDocument = HydratedDocument<DirectorEntity>;

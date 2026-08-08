@@ -1,13 +1,15 @@
 import {
   deleteKey,
-  deleteKeysByPattern,
+  getOrInitializeInteger,
+  incrementInteger,
 } from "../../infrastructure/cache/redis";
 import type { PaginationOptions } from "../../shared/pagination/pagination";
 
-export const movieListCachePrefix = "moviehub:movies:list:v2";
+export const movieListCachePrefix = "moviehub:movies:list:v3";
 
 export interface MovieListCacheOptions extends PaginationOptions {
   includeDirector?: boolean;
+  version?: number;
 }
 
 export const movieListCacheKey = (
@@ -21,8 +23,9 @@ export const movieListCacheKey = (
       ? { page: 1, limit: 20, includeDirector: options }
       : options;
   const suffix = normalizedOptions.includeDirector ? ":with-director" : "";
+  const version = normalizedOptions.version ?? 1;
 
-  return `${movieListCachePrefix}:p${normalizedOptions.page}:l${normalizedOptions.limit}${suffix}`;
+  return `${movieListCachePrefix}:g${version}:p${normalizedOptions.page}:l${normalizedOptions.limit}${suffix}`;
 };
 
 export const movieCacheKey = (
@@ -38,19 +41,41 @@ export const movieCacheTtlSeconds = 300;
 
 export const movieListCachePattern = (includeDirector?: boolean): string => {
   return includeDirector === true
-    ? `${movieListCachePrefix}:*:with-director`
-    : `${movieListCachePrefix}:*`;
+    ? `${movieListCachePrefix}:g*:p*:l*:with-director`
+    : `${movieListCachePrefix}:g*:p*:l*`;
+};
+
+export const movieListCacheVersionKey = (
+  includeDirector = false,
+): string => {
+  const suffix = includeDirector ? ":with-director" : "";
+  return `${movieListCachePrefix}:version${suffix}`;
+};
+
+export const getMovieListCacheVersion = async (
+  includeDirector = false,
+): Promise<number> => {
+  return getOrInitializeInteger(movieListCacheVersionKey(includeDirector), 1);
+};
+
+export const bumpMovieListCacheVersion = async (
+  includeDirector = false,
+): Promise<number> => {
+  return incrementInteger(movieListCacheVersionKey(includeDirector), 1);
 };
 
 export const invalidateMovieListCaches = async (): Promise<void> => {
-  await deleteKeysByPattern(movieListCachePattern());
+  await Promise.all([
+    bumpMovieListCacheVersion(),
+    bumpMovieListCacheVersion(true),
+  ]);
 };
 
 export const invalidateMovieDirectorCaches = async (
   movieIds: readonly string[],
 ): Promise<void> => {
   await Promise.all([
-    deleteKeysByPattern(movieListCachePattern(true)),
+    bumpMovieListCacheVersion(true),
     ...movieIds.map((movieId) => deleteKey(movieCacheKey(movieId, true))),
   ]);
 };

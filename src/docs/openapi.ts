@@ -103,6 +103,12 @@ export const openApiDocument = {
           {
             $ref: "#/components/parameters/Limit",
           },
+          {
+            $ref: "#/components/parameters/MoviesPage",
+          },
+          {
+            $ref: "#/components/parameters/MoviesLimit",
+          },
         ],
         responses: {
           "200": {
@@ -167,6 +173,12 @@ export const openApiDocument = {
           },
           {
             $ref: "#/components/parameters/IncludeMovies",
+          },
+          {
+            $ref: "#/components/parameters/MoviesPage",
+          },
+          {
+            $ref: "#/components/parameters/MoviesLimit",
           },
         ],
         responses: {
@@ -445,7 +457,7 @@ export const openApiDocument = {
         in: "query",
         required: false,
         description:
-          "Set to movies to include the movies that reference each returned director. On collection requests, page and limit paginate the director collection; nested movie arrays are not paginated in this version.",
+          "Set to movies to include the movies that reference each returned director. The page and limit parameters paginate the director collection; moviesPage and moviesLimit paginate each nested movie array.",
         schema: {
           type: "string",
           enum: ["movies"],
@@ -474,6 +486,33 @@ export const openApiDocument = {
           maximum: 100,
           default: 20,
           example: 20,
+        },
+      },
+      MoviesPage: {
+        name: "moviesPage",
+        in: "query",
+        required: false,
+        description:
+          "One-based page number for nested movies. Requires include=movies and defaults to 1.",
+        schema: {
+          type: "integer",
+          minimum: 1,
+          default: 1,
+          example: 2,
+        },
+      },
+      MoviesLimit: {
+        name: "moviesLimit",
+        in: "query",
+        required: false,
+        description:
+          "Number of nested movies per director. Requires include=movies, defaults to 20 and cannot exceed 100.",
+        schema: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          default: 20,
+          example: 10,
         },
       },
     },
@@ -625,13 +664,17 @@ export const openApiDocument = {
           },
           {
             type: "object",
-            required: ["movies"],
+            required: ["movies", "moviesMeta"],
             properties: {
               movies: {
                 type: "array",
                 items: {
                   $ref: "#/components/schemas/Movie",
                 },
+              },
+              moviesMeta: {
+                $ref: "#/components/schemas/PaginationMeta",
+                description: "Pagination metadata for the nested movies array.",
               },
             },
           },

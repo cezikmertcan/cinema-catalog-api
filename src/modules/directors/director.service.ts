@@ -10,7 +10,7 @@ import {
 } from "./director.repository";
 import {
   findMovieIdsByDirectorId,
-  findMoviesByDirectorIds,
+  findPaginatedMoviesByDirectorIds,
   moviesExistForDirector,
 } from "../movies/movie.repository";
 import { invalidateMovieDirectorCaches } from "../movies/movie.cache";
@@ -20,7 +20,9 @@ import type { DirectorDocument } from "./director.model";
 import {
   createPaginationMeta,
   defaultPagination,
+  type PaginatedQueryResult,
   type PaginatedResponse,
+  type PaginationOptions,
 } from "../../shared/pagination/pagination";
 import {
   serializeDirector,
@@ -42,33 +44,20 @@ const directorNotFound = (directorId: string): AppError => {
 
 const serializeDirectorResult = (
   director: DirectorDocument,
-  movies: MovieDocument[] | undefined,
+  movies: PaginatedQueryResult<MovieDocument> | undefined,
+  moviesPagination: PaginationOptions | undefined,
 ): DirectorQueryResponse => {
   const response = serializeDirector(director);
 
-  if (movies === undefined) {
+  if (movies === undefined || moviesPagination === undefined) {
     return response;
   }
 
   return {
     ...response,
-    movies: movies.map(serializeMovie),
+    movies: movies.items.map(serializeMovie),
+    moviesMeta: createPaginationMeta(moviesPagination, movies.total),
   };
-};
-
-const moviesByDirectorId = (
-  movies: MovieDocument[],
-): Map<string, MovieDocument[]> => {
-  const groupedMovies = new Map<string, MovieDocument[]>();
-
-  for (const movie of movies) {
-    const directorId = movie.directorId.toString();
-    const directorMovies = groupedMovies.get(directorId) ?? [];
-    directorMovies.push(movie);
-    groupedMovies.set(directorId, directorMovies);
-  }
-
-  return groupedMovies;
 };
 
 export const createDirector = async (input: CreateDirectorInput) => {
@@ -88,16 +77,18 @@ export const listDirectors = async (
     };
   }
 
-  const movies = await findMoviesByDirectorIds(
+  const moviesPagination = options.moviesPagination ?? defaultPagination;
+  const moviesByDirectorId = await findPaginatedMoviesByDirectorIds(
     directors.map((director) => director._id.toString()),
+    moviesPagination,
   );
-  const groupedMovies = moviesByDirectorId(movies);
 
   return {
     data: directors.map((director) =>
       serializeDirectorResult(
         director,
-        groupedMovies.get(director._id.toString()) ?? [],
+        moviesByDirectorId.get(director._id.toString()),
+        moviesPagination,
       ),
     ),
     meta: createPaginationMeta(pagination, total),
@@ -115,12 +106,20 @@ export const getDirector = async (
     throw directorNotFound(directorId);
   }
 
-  const movies =
+  const moviesPagination =
     options.includeMovies === true
-      ? await findMoviesByDirectorIds([directorId])
+      ? options.moviesPagination ?? defaultPagination
+      : undefined;
+  const movies =
+    moviesPagination !== undefined
+      ? await findPaginatedMoviesByDirectorIds([directorId], moviesPagination)
       : undefined;
 
-  return serializeDirectorResult(director, movies);
+  return serializeDirectorResult(
+    director,
+    movies?.get(directorId),
+    moviesPagination,
+  );
 };
 
 export const updateDirector = async (
