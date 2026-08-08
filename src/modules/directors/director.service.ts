@@ -3,24 +3,131 @@ import { readObjectId } from "../../shared/validation/request-validation";
 import {
   deleteDirectorById,
   directorExists,
+  findAllDirectors,
+  findDirectorById,
   insertDirector,
+  updateDirectorById,
 } from "./director.repository";
-import { moviesExistForDirector } from "../movies/movie.repository";
-import type { CreateDirectorInput } from "./director.types";
+import {
+  findMoviesByDirectorIds,
+  moviesExistForDirector,
+} from "../movies/movie.repository";
+import { serializeMovie } from "../movies/movie.serializer";
+import type { MovieDocument } from "../movies/movie.model";
+import type { DirectorDocument } from "./director.model";
+import {
+  serializeDirector,
+  type DirectorQueryResponse,
+} from "./director.serializer";
+import type {
+  CreateDirectorInput,
+  DirectorQueryOptions,
+  UpdateDirectorInput,
+} from "./director.types";
+
+const directorNotFound = (directorId: string): AppError => {
+  return new AppError(
+    404,
+    "DIRECTOR_NOT_FOUND",
+    `Director ${directorId} was not found.`,
+  );
+};
+
+const serializeDirectorResult = (
+  director: DirectorDocument,
+  movies: MovieDocument[] | undefined,
+): DirectorQueryResponse => {
+  const response = serializeDirector(director);
+
+  if (movies === undefined) {
+    return response;
+  }
+
+  return {
+    ...response,
+    movies: movies.map(serializeMovie),
+  };
+};
+
+const moviesByDirectorId = (
+  movies: MovieDocument[],
+): Map<string, MovieDocument[]> => {
+  const groupedMovies = new Map<string, MovieDocument[]>();
+
+  for (const movie of movies) {
+    const directorId = movie.directorId.toString();
+    const directorMovies = groupedMovies.get(directorId) ?? [];
+    directorMovies.push(movie);
+    groupedMovies.set(directorId, directorMovies);
+  }
+
+  return groupedMovies;
+};
 
 export const createDirector = async (input: CreateDirectorInput) => {
   return insertDirector(input);
+};
+
+export const listDirectors = async (
+  options: DirectorQueryOptions = {},
+): Promise<DirectorQueryResponse[]> => {
+  const directors = await findAllDirectors();
+
+  if (options.includeMovies !== true) {
+    return directors.map(serializeDirector);
+  }
+
+  const movies = await findMoviesByDirectorIds(
+    directors.map((director) => director._id.toString()),
+  );
+  const groupedMovies = moviesByDirectorId(movies);
+
+  return directors.map((director) =>
+    serializeDirectorResult(
+      director,
+      groupedMovies.get(director._id.toString()) ?? [],
+    ),
+  );
+};
+
+export const getDirector = async (
+  id: unknown,
+  options: DirectorQueryOptions = {},
+): Promise<DirectorQueryResponse> => {
+  const directorId = readObjectId(id, "directorId");
+  const director = await findDirectorById(directorId);
+
+  if (director === null) {
+    throw directorNotFound(directorId);
+  }
+
+  const movies =
+    options.includeMovies === true
+      ? await findMoviesByDirectorIds([directorId])
+      : undefined;
+
+  return serializeDirectorResult(director, movies);
+};
+
+export const updateDirector = async (
+  id: unknown,
+  input: UpdateDirectorInput,
+) => {
+  const directorId = readObjectId(id, "directorId");
+  const director = await updateDirectorById(directorId, input);
+
+  if (director === null) {
+    throw directorNotFound(directorId);
+  }
+
+  return serializeDirector(director);
 };
 
 export const deleteDirector = async (id: unknown): Promise<void> => {
   const directorId = readObjectId(id, "directorId");
 
   if (!(await directorExists(directorId))) {
-    throw new AppError(
-      404,
-      "DIRECTOR_NOT_FOUND",
-      `Director ${directorId} was not found.`,
-    );
+    throw directorNotFound(directorId);
   }
 
   if (await moviesExistForDirector(directorId)) {
@@ -34,10 +141,6 @@ export const deleteDirector = async (id: unknown): Promise<void> => {
   const deletedDirector = await deleteDirectorById(directorId);
 
   if (deletedDirector === null) {
-    throw new AppError(
-      404,
-      "DIRECTOR_NOT_FOUND",
-      `Director ${directorId} was not found.`,
-    );
+    throw directorNotFound(directorId);
   }
 };

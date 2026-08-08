@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { AppError } from "../src/shared/errors/app-error";
 import {
   parseCreateDirector,
+  parseIncludeMovies,
+  parseUpdateDirector,
 } from "../src/modules/directors/director.validation";
 import {
   parseCreateMovie,
@@ -106,5 +108,23 @@ test("keeps partial updates strict and validates include values", () => {
   assertValidationError(
     () => parseIncludeDirector("director-profile"),
     'include must be "director" when provided.',
+  );
+});
+
+test("validates director updates and movie includes", () => {
+  assert.deepEqual(parseUpdateDirector({ bio: "Updated biography." }), {
+    bio: "Updated biography.",
+  });
+
+  assertValidationError(
+    () => parseUpdateDirector({}),
+    "At least one director field must be provided for update.",
+  );
+
+  assert.equal(parseIncludeMovies(undefined), false);
+  assert.equal(parseIncludeMovies("movies"), true);
+  assertValidationError(
+    () => parseIncludeMovies("filmography"),
+    'include must be "movies" when provided.',
   );
 });

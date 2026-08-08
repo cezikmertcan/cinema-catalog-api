@@ -51,6 +51,22 @@ export const findMovieById = async (
   return query.exec();
 };
 
+export const findMoviesByDirectorIds = async (
+  directorIds: readonly string[],
+): Promise<MovieDocument[]> => {
+  if (directorIds.length === 0) {
+    return [];
+  }
+
+  return MovieModel.find({
+    directorId: {
+      $in: directorIds.map((id) => new Types.ObjectId(id)),
+    },
+  })
+    .sort({ releaseDate: -1, title: 1 })
+    .exec();
+};
+
 export const moviesExistForDirector = async (id: string): Promise<boolean> => {
   return Boolean(await MovieModel.exists({ directorId: new Types.ObjectId(id) }));
 };

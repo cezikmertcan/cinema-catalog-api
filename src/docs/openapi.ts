@@ -90,6 +90,37 @@ export const openApiDocument = {
       },
     },
     "/api/v1/directors": {
+      get: {
+        tags: ["Directors"],
+        summary: "List directors",
+        parameters: [
+          {
+            $ref: "#/components/parameters/IncludeMovies",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Directors returned.",
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    {
+                      $ref: "#/components/schemas/DirectorListResponse",
+                    },
+                    {
+                      $ref: "#/components/schemas/DirectorListWithMoviesResponse",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+        },
+      },
       post: {
         tags: ["Directors"],
         summary: "Create a director",
@@ -121,6 +152,80 @@ export const openApiDocument = {
       },
     },
     "/api/v1/directors/{id}": {
+      get: {
+        tags: ["Directors"],
+        summary: "Get a director",
+        parameters: [
+          {
+            $ref: "#/components/parameters/ResourceId",
+          },
+          {
+            $ref: "#/components/parameters/IncludeMovies",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Director returned.",
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    {
+                      $ref: "#/components/schemas/DirectorDataResponse",
+                    },
+                    {
+                      $ref: "#/components/schemas/DirectorWithMoviesDataResponse",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "404": {
+            $ref: "#/components/responses/DirectorNotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Directors"],
+        summary: "Update a director",
+        parameters: [
+          {
+            $ref: "#/components/parameters/ResourceId",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/DirectorUpdate",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Director updated.",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DirectorDataResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "404": {
+            $ref: "#/components/responses/DirectorNotFound",
+          },
+        },
+      },
       delete: {
         tags: ["Directors"],
         summary: "Delete an unreferenced director",
@@ -323,6 +428,17 @@ export const openApiDocument = {
           enum: ["director"],
         },
       },
+      IncludeMovies: {
+        name: "include",
+        in: "query",
+        required: false,
+        description:
+          "Set to movies to include the movies that reference the director.",
+        schema: {
+          type: "string",
+          enum: ["movies"],
+        },
+      },
     },
     responses: {
       ValidationError: {
@@ -439,6 +555,50 @@ export const openApiDocument = {
             example: "British-American filmmaker.",
           },
         },
+      },
+      DirectorUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        description: "At least one director field must be provided.",
+        properties: {
+          firstName: {
+            type: "string",
+            maxLength: 100,
+          },
+          secondName: {
+            type: "string",
+            maxLength: 100,
+          },
+          birthDate: {
+            type: "string",
+            format: "date",
+            description: "Calendar date in YYYY-MM-DD format.",
+          },
+          bio: {
+            type: "string",
+            maxLength: 5000,
+          },
+        },
+      },
+      DirectorWithMovies: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/Director",
+          },
+          {
+            type: "object",
+            required: ["movies"],
+            properties: {
+              movies: {
+                type: "array",
+                items: {
+                  $ref: "#/components/schemas/Movie",
+                },
+              },
+            },
+          },
+        ],
       },
       MovieInput: {
         type: "object",
@@ -652,6 +812,39 @@ export const openApiDocument = {
         properties: {
           data: {
             $ref: "#/components/schemas/Director",
+          },
+        },
+      },
+      DirectorWithMoviesDataResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            $ref: "#/components/schemas/DirectorWithMovies",
+          },
+        },
+      },
+      DirectorListResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/Director",
+            },
+          },
+        },
+      },
+      DirectorListWithMoviesResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/DirectorWithMovies",
+            },
           },
         },
       },

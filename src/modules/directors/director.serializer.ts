@@ -1,4 +1,5 @@
 import type { DirectorDocument } from "./director.model";
+import type { MovieResponse } from "../movies/movie.serializer";
 
 export interface DirectorResponse {
   id: string;
@@ -7,6 +8,14 @@ export interface DirectorResponse {
   birthDate: string;
   bio: string;
 }
+
+export interface DirectorWithMoviesResponse extends DirectorResponse {
+  movies: MovieResponse[];
+}
+
+export type DirectorQueryResponse =
+  | DirectorResponse
+  | DirectorWithMoviesResponse;
 
 export const serializeDirector = (
   director: DirectorDocument,

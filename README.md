@@ -19,6 +19,8 @@ MovieHub is a RESTful backend for managing movies and directors. It uses a layer
 - A movie stores a required `directorId` reference to a director.
 - Movie responses return `directorId` by default. This keeps the default payload small and avoids an implicit database join.
 - `GET /api/v1/movies` and `GET /api/v1/movies/:id` support `?include=director`. When requested, the response keeps `directorId` and adds a serialized `director` object.
+- Director reads return only director fields by default. `GET /api/v1/directors` and `GET /api/v1/directors/:id` support `?include=movies` when the related movie list is needed.
+- Director fields can be partially updated with `PATCH /api/v1/directors/:id`; an empty update body is rejected.
 - A director cannot be deleted while at least one movie references it. The API returns `409 Conflict` with the `DIRECTOR_HAS_MOVIES` error code. The client must delete or reassign the movies first; the API does not cascade-delete them.
 - Authentication and authorization are not defined by the case requirements, so they are intentionally outside the current API scope. A production version should protect write operations with the selected identity and access-control strategy.
 
@@ -124,6 +126,9 @@ All domain routes use the `/api/v1` prefix.
 | `GET` | `/openapi.json` | Returns the OpenAPI document | `200` |
 | `GET` | `/health` | Checks MongoDB and Redis connectivity and latency | `200` or `503` |
 | `POST` | `/api/v1/directors` | Creates a director | `201` |
+| `GET` | `/api/v1/directors` | Lists directors | `200` |
+| `GET` | `/api/v1/directors/:id` | Gets one director | `200` |
+| `PATCH` | `/api/v1/directors/:id` | Updates one or more director fields | `200` |
 | `DELETE` | `/api/v1/directors/:id` | Deletes an unreferenced director | `204` |
 | `POST` | `/api/v1/movies` | Creates a movie | `201` |
 | `GET` | `/api/v1/movies` | Lists movies | `200` |
@@ -133,7 +138,7 @@ All domain routes use the `/api/v1` prefix.
 
 ### API documentation
 
-Swagger UI is served from `/docs` and is backed by the OpenAPI document returned from `/openapi.json`. It documents the health endpoint, all movie and director operations, the `include=director` query parameter, validation errors and the `409 DIRECTOR_HAS_MOVIES` relationship conflict.
+Swagger UI is served from `/docs` and is backed by the OpenAPI document returned from `/openapi.json`. It documents the health endpoint, all movie and director operations, the `include=director` and `include=movies` query parameters, validation errors and the `409 DIRECTOR_HAS_MOVIES` relationship conflict.
 
 The root page at `/` provides links to both documentation endpoints and the dependency health check.
 
@@ -186,7 +191,32 @@ The expanded response adds a serialized director without removing `directorId`:
 }
 ```
 
-`include` currently accepts only `director`. Other values return `400 Validation Error` so unsupported response expansions do not silently change the API contract.
+For movie endpoints, `include` currently accepts only `director`. Other values return `400 Validation Error` so unsupported response expansions do not silently change the API contract. Director endpoints use the separate `include=movies` value.
+
+### Director reads and updates
+
+The default director response contains only the director resource:
+
+```http
+GET /api/v1/directors/:id
+```
+
+Use `include=movies` to include the movies that reference the director:
+
+```http
+GET /api/v1/directors?include=movies
+GET /api/v1/directors/:id?include=movies
+```
+
+The expanded director response adds a `movies` array. Each movie keeps its `directorId` and does not recursively include a director object, preventing circular response expansion.
+
+Director updates are partial and use the same strict validation rules as director creation:
+
+```http
+PATCH /api/v1/directors/:id
+```
+
+At least one of `firstName`, `secondName`, `birthDate` or `bio` must be supplied.
 
 ### Relationship conflict
 
@@ -254,7 +284,7 @@ npm run build
 npm test
 ```
 
-`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
+`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, director reads and updates, `include=movies`, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
 
 ## Deployment notes
 

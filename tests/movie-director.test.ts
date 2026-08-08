@@ -166,6 +166,8 @@ test("serves the landing page and Swagger documentation", async () => {
     paths: Record<string, unknown>;
   };
   assert.equal(document.openapi, "3.0.3");
+  assert.equal(typeof document.paths["/api/v1/directors"], "object");
+  assert.equal(typeof document.paths["/api/v1/directors/{id}"], "object");
   assert.equal(typeof document.paths["/api/v1/movies"], "object");
   assert.equal(typeof document.paths["/api/v1/movies/{id}"], "object");
 
@@ -357,6 +359,117 @@ test("returns not found when deleting a missing movie", async () => {
     error: {
       code: "MOVIE_NOT_FOUND",
       message: "Movie 507f1f77bcf86cd799439011 was not found.",
+    },
+  });
+});
+
+test("supports director reads, updates and movie expansion", async () => {
+  const director = await requestJson("/api/v1/directors", {
+    method: "POST",
+    body: JSON.stringify({
+      firstName: "Greta",
+      secondName: "Gerwig",
+      birthDate: "1983-08-04",
+      bio: "American filmmaker and actor.",
+    }),
+  });
+
+  assert.equal(director.status, 201);
+  const directorId = resourceId(director.body);
+
+  const directorById = await requestJson(
+    `/api/v1/directors/${directorId}`,
+  );
+  assert.equal(directorById.status, 200);
+  assert.equal(
+    (directorById.body as { data: { id: string } }).data.id,
+    directorId,
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      (directorById.body as { data: object }).data,
+      "movies",
+    ),
+    false,
+  );
+
+  const directors = await requestJson("/api/v1/directors");
+  assert.equal(directors.status, 200);
+  assert.equal((directors.body as { data: unknown[] }).data.length, 1);
+
+  const updatedDirector = await requestJson(
+    `/api/v1/directors/${directorId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        bio: "Updated filmmaker biography.",
+        birthDate: "1983-08-05",
+      }),
+    },
+  );
+  assert.equal(updatedDirector.status, 200);
+  assert.equal(
+    (updatedDirector.body as { data: { bio: string; birthDate: string } }).data
+      .bio,
+    "Updated filmmaker biography.",
+  );
+  assert.equal(
+    (updatedDirector.body as { data: { birthDate: string } }).data.birthDate,
+    "1983-08-05",
+  );
+
+  const movie = await requestJson("/api/v1/movies", {
+    method: "POST",
+    body: JSON.stringify({
+      title: "Barbie",
+      description: "A doll leaves Barbieland for the real world.",
+      releaseDate: "2023-07-21",
+      genre: "Comedy",
+      rating: 7,
+      imdbId: "tt1517268",
+      directorId,
+    }),
+  });
+  assert.equal(movie.status, 201);
+
+  const directorWithMovies = await requestJson(
+    `/api/v1/directors/${directorId}?include=movies`,
+  );
+  assert.equal(directorWithMovies.status, 200);
+  const expandedDirector = directorWithMovies.body as {
+    data: {
+      movies: Array<{ title: string; directorId: string; director?: unknown }>;
+    };
+  };
+  assert.equal(expandedDirector.data.movies.length, 1);
+  assert.equal(expandedDirector.data.movies[0]?.title, "Barbie");
+  assert.equal(expandedDirector.data.movies[0]?.directorId, directorId);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      expandedDirector.data.movies[0] ?? {},
+      "director",
+    ),
+    false,
+  );
+
+  const directorsWithMovies = await requestJson(
+    "/api/v1/directors?include=movies",
+  );
+  assert.equal(directorsWithMovies.status, 200);
+  assert.equal(
+    (directorsWithMovies.body as { data: Array<{ movies: unknown[] }> }).data[0]
+      ?.movies.length,
+    1,
+  );
+
+  const invalidInclude = await requestJson(
+    `/api/v1/directors/${directorId}?include=filmography`,
+  );
+  assert.equal(invalidInclude.status, 400);
+  assert.deepEqual(invalidInclude.body, {
+    error: {
+      code: "VALIDATION_ERROR",
+      message: 'include must be "movies" when provided.',
     },
   });
 });
