@@ -1,5 +1,10 @@
 import { Types } from "mongoose";
 import { MovieModel, type MovieDocument } from "./movie.model";
+import {
+  paginationOffset,
+  type PaginatedQueryResult,
+  type PaginationOptions,
+} from "../../shared/pagination/pagination";
 import type {
   CreateMovieInput,
   MovieQueryOptions,
@@ -22,8 +27,12 @@ export const insertMovie = async (
 
 export const findAllMovies = async (
   options: MovieQueryOptions = {},
-): Promise<MovieDocument[]> => {
-  const query = MovieModel.find().sort({ releaseDate: -1, title: 1 });
+): Promise<PaginatedQueryResult<MovieDocument>> => {
+  const query = MovieModel.find().sort({ releaseDate: -1, title: 1, _id: 1 });
+
+  if (options.pagination !== undefined) {
+    applyPagination(query, options.pagination);
+  }
 
   if (options.includeDirector === true) {
     query.populate({
@@ -32,7 +41,22 @@ export const findAllMovies = async (
     });
   }
 
-  return query.exec();
+  const [movies, total] = await Promise.all([
+    query.exec(),
+    MovieModel.countDocuments().exec(),
+  ]);
+
+  return {
+    items: movies,
+    total,
+  };
+};
+
+const applyPagination = (
+  query: ReturnType<typeof MovieModel.find>,
+  pagination: PaginationOptions,
+): void => {
+  query.skip(paginationOffset(pagination)).limit(pagination.limit);
 };
 
 export const findMovieById = async (
@@ -63,7 +87,7 @@ export const findMoviesByDirectorIds = async (
       $in: directorIds.map((id) => new Types.ObjectId(id)),
     },
   })
-    .sort({ releaseDate: -1, title: 1 })
+    .sort({ releaseDate: -1, title: 1, _id: 1 })
     .exec();
 };
 

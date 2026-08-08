@@ -3,12 +3,14 @@ import { test } from "node:test";
 import { AppError } from "../src/shared/errors/app-error";
 import {
   parseCreateDirector,
+  parseDirectorListQuery,
   parseIncludeMovies,
   parseUpdateDirector,
 } from "../src/modules/directors/director.validation";
 import {
   parseCreateMovie,
   parseIncludeDirector,
+  parseMovieListQuery,
   parseUpdateMovie,
 } from "../src/modules/movies/movie.validation";
 
@@ -126,5 +128,36 @@ test("validates director updates and movie includes", () => {
   assertValidationError(
     () => parseIncludeMovies("filmography"),
     'include must be "movies" when provided.',
+  );
+});
+
+test("parses and validates collection pagination", () => {
+  assert.deepEqual(parseMovieListQuery({}), {
+    includeDirector: false,
+    pagination: { page: 1, limit: 20 },
+  });
+  assert.deepEqual(
+    parseDirectorListQuery({ include: "movies", page: "2", limit: "50" }),
+    {
+      includeMovies: true,
+      pagination: { page: 2, limit: 50 },
+    },
+  );
+
+  assertValidationError(
+    () => parseMovieListQuery({ page: "0" }),
+    "page must be a positive integer.",
+  );
+  assertValidationError(
+    () => parseDirectorListQuery({ limit: "101" }),
+    "limit must be at most 100.",
+  );
+  assertValidationError(
+    () => parseMovieListQuery({ page: "1.5" }),
+    "page must be a positive integer.",
+  );
+  assertValidationError(
+    () => parseDirectorListQuery({ page: "1", unsupported: "value" }),
+    "Request contains unsupported fields.",
   );
 });

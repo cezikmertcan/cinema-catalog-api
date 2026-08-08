@@ -22,20 +22,19 @@ import {
   movieCacheTtlSeconds,
   movieListCacheKey,
   movieListCacheTtlSeconds,
+  invalidateMovieListCaches,
 } from "./movie.cache";
+import {
+  createPaginationMeta,
+  defaultPagination,
+  type PaginatedResponse,
+} from "../../shared/pagination/pagination";
 import { serializeMovie, type MovieResponse } from "./movie.serializer";
 import type {
   CreateMovieInput,
   MovieQueryOptions,
   UpdateMovieInput,
 } from "./movie.types";
-
-const invalidateMovieListCaches = async (): Promise<void> => {
-  await Promise.all([
-    deleteKey(movieListCacheKey()),
-    deleteKey(movieListCacheKey(true)),
-  ]);
-};
 
 const ensureDirectorExists = async (directorId: string): Promise<void> => {
   if (!(await directorExists(directorId))) {
@@ -66,17 +65,24 @@ export const createMovie = async (input: CreateMovieInput) => {
 
 export const listMovies = async (
   options: MovieQueryOptions = {},
-): Promise<MovieResponse[]> => {
+): Promise<PaginatedResponse<MovieResponse>> => {
   const includeDirector = options.includeDirector === true;
-  const cacheKey = movieListCacheKey(includeDirector);
-  const cachedMovies = await getJson<MovieResponse[]>(cacheKey);
+  const pagination = options.pagination ?? defaultPagination;
+  const cacheKey = movieListCacheKey({ includeDirector, ...pagination });
+  const cachedMovies = await getJson<PaginatedResponse<MovieResponse>>(cacheKey);
 
   if (cachedMovies !== null) {
     return cachedMovies;
   }
 
-  const movies = await findAllMovies({ includeDirector });
-  const response = movies.map(serializeMovie);
+  const { items: movies, total } = await findAllMovies({
+    includeDirector,
+    pagination,
+  });
+  const response: PaginatedResponse<MovieResponse> = {
+    data: movies.map(serializeMovie),
+    meta: createPaginationMeta(pagination, total),
+  };
   await setJson(cacheKey, response, movieListCacheTtlSeconds);
 
   return response;

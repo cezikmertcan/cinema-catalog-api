@@ -7,6 +7,7 @@ import { buildApp } from "../src/app";
 import {
   connectToCache,
   deleteKey,
+  deleteKeysByPattern,
   disconnectFromCache,
   getJson,
   isCacheReady,
@@ -18,6 +19,7 @@ import {
 import {
   movieCacheKey,
   movieListCacheKey,
+  movieListCachePattern,
 } from "../src/modules/movies/movie.cache";
 import type { MovieResponse } from "../src/modules/movies/movie.serializer";
 
@@ -109,8 +111,7 @@ before(async () => {
 beforeEach(async () => {
   await Promise.all([
     mongoose.connection.dropDatabase(),
-    deleteKey(movieListCacheKey()),
-    deleteKey(movieListCacheKey(true)),
+    deleteKeysByPattern(movieListCachePattern()),
   ]);
 });
 
@@ -172,6 +173,9 @@ test("serves the landing page and Swagger documentation", async () => {
   assert.equal(typeof document.paths["/api/v1/directors/{id}"], "object");
   assert.equal(typeof document.paths["/api/v1/movies"], "object");
   assert.equal(typeof document.paths["/api/v1/movies/{id}"], "object");
+  assert.match(JSON.stringify(document), /PaginationMeta/);
+  assert.match(JSON.stringify(document), /components\/parameters\/Page/);
+  assert.match(JSON.stringify(document), /components\/parameters\/Limit/);
 
   const docs = await requestText("/docs");
   assert.equal(docs.status, 200);
@@ -263,7 +267,7 @@ test("supports the director and movie lifecycle", async () => {
   assert.equal(movies.status, 200);
   assert.equal((movies.body as { data: unknown[] }).data.length, 1);
   assert.equal(
-    (await getJson<MovieResponse[]>(movieListCacheKey()))?.length,
+    (await getJson<{ data: MovieResponse[] }>(movieListCacheKey()))?.data.length,
     1,
   );
 
@@ -276,7 +280,8 @@ test("supports the director and movie lifecycle", async () => {
   };
   assert.equal(expandedMovieList.data[0]?.director.id, directorId);
   assert.equal(
-    (await getJson<MovieResponse[]>(movieListCacheKey(true)))?.[0]?.director
+    (await getJson<{ data: MovieResponse[] }>(movieListCacheKey(true)))?.data[0]
+      ?.director
       ?.id,
     directorId,
   );
@@ -294,8 +299,11 @@ test("supports the director and movie lifecycle", async () => {
     (updatedMovie.body as { data: { rating: number } }).data.rating,
     9,
   );
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey()), null);
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+  assert.equal(await getJson<{ data: MovieResponse[] }>(movieListCacheKey()), null);
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(movieListCacheKey(true)),
+    null,
+  );
   assert.equal(
     (await getJson<MovieResponse>(movieCacheKey(movieId)))?.rating,
     9,
@@ -334,8 +342,11 @@ test("supports the director and movie lifecycle", async () => {
   assert.equal(deletedMovie.status, 204);
   assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId)), null);
   assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey()), null);
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+  assert.equal(await getJson<{ data: MovieResponse[] }>(movieListCacheKey()), null);
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(movieListCacheKey(true)),
+    null,
+  );
 
   const deletedDirector = await requestJson(`/api/v1/directors/${directorId}`, {
     method: "DELETE",
@@ -562,7 +573,10 @@ test("invalidates expanded movie caches when a director is updated", async () =>
   for (const movieId of movieIds) {
     assert.notEqual(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
   }
-  assert.notEqual(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+  assert.notEqual(
+    await getJson<{ data: MovieResponse[] }>(movieListCacheKey(true)),
+    null,
+  );
 
   const updatedDirector = await requestJson(
     `/api/v1/directors/${directorId}`,
@@ -579,7 +593,10 @@ test("invalidates expanded movie caches when a director is updated", async () =>
   for (const movieId of movieIds) {
     assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
   }
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(movieListCacheKey(true)),
+    null,
+  );
 
   for (const movieId of movieIds) {
     const refreshedMovie = await requestJson(
@@ -602,5 +619,173 @@ test("invalidates expanded movie caches when a director is updated", async () =>
     (refreshedMovies.body as { data: Array<{ director: { firstName: string } }> })
       .data.every((movie) => movie.director.firstName === "Sofia Maria"),
     true,
+  );
+});
+
+test("paginates movie and director collection responses", async () => {
+  const createDirector = async (firstName: string) => {
+    const response = await requestJson("/api/v1/directors", {
+      method: "POST",
+      body: JSON.stringify({
+        firstName,
+        secondName: "Director",
+        birthDate: "1980-01-01",
+        bio: "A filmmaker.",
+      }),
+    });
+
+    assert.equal(response.status, 201);
+    return resourceId(response.body);
+  };
+
+  const directorId = await createDirector("Director A");
+  await createDirector("Director B");
+  await createDirector("Director C");
+
+  const movieIds: string[] = [];
+  for (const [index, movieInput] of [
+    {
+      title: "Movie One",
+      description: "First paginated movie.",
+      releaseDate: "2024-01-01",
+      imdbId: "tt7000001",
+    },
+    {
+      title: "Movie Two",
+      description: "Second paginated movie.",
+      releaseDate: "2023-01-01",
+      imdbId: "tt7000002",
+    },
+    {
+      title: "Movie Three",
+      description: "Third paginated movie.",
+      releaseDate: "2022-01-01",
+      imdbId: "tt7000003",
+    },
+  ].entries()) {
+    const movie = await requestJson("/api/v1/movies", {
+      method: "POST",
+      body: JSON.stringify({
+        ...movieInput,
+        genre: "Drama",
+        rating: 8 - index / 10,
+        directorId,
+      }),
+    });
+
+    assert.equal(movie.status, 201);
+    movieIds.push(resourceId(movie.body));
+  }
+
+  const firstMoviePage = await requestJson("/api/v1/movies?page=1&limit=2");
+  assert.equal(firstMoviePage.status, 200);
+  const firstMoviePageBody = firstMoviePage.body as {
+    data: Array<{ title: string }>;
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  };
+  assert.equal(firstMoviePageBody.data.length, 2);
+  assert.deepEqual(firstMoviePageBody.meta, {
+    page: 1,
+    limit: 2,
+    total: 3,
+    totalPages: 2,
+    hasNext: true,
+    hasPrevious: false,
+  });
+
+  const secondMoviePage = await requestJson("/api/v1/movies?page=2&limit=2");
+  assert.equal(secondMoviePage.status, 200);
+  assert.equal(
+    (secondMoviePage.body as { data: unknown[] }).data.length,
+    1,
+  );
+
+  const expandedMoviePage = await requestJson(
+    "/api/v1/movies?page=1&limit=2&include=director",
+  );
+  assert.equal(expandedMoviePage.status, 200);
+  assert.equal(
+    (
+      expandedMoviePage.body as {
+        data: Array<{ director: { id: string } }>;
+      }
+    ).data.every((movie) => movie.director.id === directorId),
+    true,
+  );
+
+  assert.notEqual(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 1, limit: 2 }),
+    ),
+    null,
+  );
+  assert.notEqual(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 2, limit: 2 }),
+    ),
+    null,
+  );
+  assert.notEqual(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 1, limit: 2, includeDirector: true }),
+    ),
+    null,
+  );
+
+  const directorsPage = await requestJson(
+    "/api/v1/directors?page=2&limit=2",
+  );
+  assert.equal(directorsPage.status, 200);
+  assert.equal(
+    (directorsPage.body as { data: unknown[] }).data.length,
+    1,
+  );
+  assert.deepEqual((directorsPage.body as { meta: object }).meta, {
+    page: 2,
+    limit: 2,
+    total: 3,
+    totalPages: 2,
+    hasNext: false,
+    hasPrevious: true,
+  });
+
+  const directorsWithMoviesPage = await requestJson(
+    "/api/v1/directors?page=1&limit=2&include=movies",
+  );
+  assert.equal(directorsWithMoviesPage.status, 200);
+  assert.equal(
+    (directorsWithMoviesPage.body as { data: unknown[] }).data.length,
+    2,
+  );
+
+  const updatedMovie = await requestJson(`/api/v1/movies/${movieIds[0]}`, {
+    method: "PATCH",
+    body: JSON.stringify({ rating: 9 }),
+  });
+  assert.equal(updatedMovie.status, 200);
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 1, limit: 2 }),
+    ),
+    null,
+  );
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 2, limit: 2 }),
+    ),
+    null,
+  );
+  assert.equal(
+    await getJson<{ data: MovieResponse[] }>(
+      movieListCacheKey({ page: 1, limit: 2, includeDirector: true }),
+    ),
+    null,
   );
 });

@@ -1,9 +1,11 @@
 import { z } from "zod";
 import {
+  paginationQuerySchema,
   parseSchema,
   requiredString,
   strictDate,
 } from "../../shared/validation/request-validation";
+import { resolvePagination, type PaginationOptions } from "../../shared/pagination/pagination";
 import type {
   CreateDirectorInput,
   UpdateDirectorInput,
@@ -24,6 +26,12 @@ const directorUpdateSchema = directorSchema
   .refine((input) => Object.keys(input).length > 0, {
     message: "At least one director field must be provided for update.",
   });
+
+const directorListQuerySchema = paginationQuerySchema
+  .extend({
+    include: z.literal("movies").optional(),
+  })
+  .strict();
 
 export const parseCreateDirector = (
   body: unknown,
@@ -47,4 +55,20 @@ export const parseIncludeMovies = (value: unknown): boolean => {
   });
 
   return true;
+};
+
+export interface DirectorListQuery {
+  includeMovies: boolean;
+  pagination: PaginationOptions;
+}
+
+export const parseDirectorListQuery = (
+  query: unknown,
+): DirectorListQuery => {
+  const parsed = parseSchema(directorListQuerySchema, query);
+
+  return {
+    includeMovies: parsed.include !== undefined,
+    pagination: resolvePagination(parsed),
+  };
 };

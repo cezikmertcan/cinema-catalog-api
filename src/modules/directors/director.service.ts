@@ -18,6 +18,11 @@ import { serializeMovie } from "../movies/movie.serializer";
 import type { MovieDocument } from "../movies/movie.model";
 import type { DirectorDocument } from "./director.model";
 import {
+  createPaginationMeta,
+  defaultPagination,
+  type PaginatedResponse,
+} from "../../shared/pagination/pagination";
+import {
   serializeDirector,
   type DirectorQueryResponse,
 } from "./director.serializer";
@@ -72,11 +77,15 @@ export const createDirector = async (input: CreateDirectorInput) => {
 
 export const listDirectors = async (
   options: DirectorQueryOptions = {},
-): Promise<DirectorQueryResponse[]> => {
-  const directors = await findAllDirectors();
+): Promise<PaginatedResponse<DirectorQueryResponse>> => {
+  const pagination = options.pagination ?? defaultPagination;
+  const { items: directors, total } = await findAllDirectors(pagination);
 
   if (options.includeMovies !== true) {
-    return directors.map(serializeDirector);
+    return {
+      data: directors.map(serializeDirector),
+      meta: createPaginationMeta(pagination, total),
+    };
   }
 
   const movies = await findMoviesByDirectorIds(
@@ -84,12 +93,15 @@ export const listDirectors = async (
   );
   const groupedMovies = moviesByDirectorId(movies);
 
-  return directors.map((director) =>
-    serializeDirectorResult(
-      director,
-      groupedMovies.get(director._id.toString()) ?? [],
+  return {
+    data: directors.map((director) =>
+      serializeDirectorResult(
+        director,
+        groupedMovies.get(director._id.toString()) ?? [],
+      ),
     ),
-  );
+    meta: createPaginationMeta(pagination, total),
+  };
 };
 
 export const getDirector = async (

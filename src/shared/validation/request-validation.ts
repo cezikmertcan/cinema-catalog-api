@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { z, type ZodType } from "zod";
 import { AppError } from "../errors/app-error";
+import { maxLimit } from "../pagination/pagination";
 
 const validationError = (message: string, details?: unknown): AppError => {
   return new AppError(400, "VALIDATION_ERROR", message, details);
@@ -137,3 +138,22 @@ export const readObjectId = (value: unknown, field: string): string => {
 export const toObjectId = (value: string): Types.ObjectId => {
   return new Types.ObjectId(value);
 };
+
+const positiveIntegerQuery = (field: string) =>
+  z
+    .string()
+    .regex(/^[1-9]\d*$/, `${field} must be a positive integer.`)
+    .transform(Number)
+    .refine(Number.isSafeInteger, `${field} must be a safe integer.`);
+
+export const paginationQuerySchema = z
+  .object({
+    page: positiveIntegerQuery("page").optional(),
+    limit: positiveIntegerQuery("limit")
+      .refine(
+        (value) => value <= maxLimit,
+        `limit must be at most ${maxLimit}.`,
+      )
+      .optional(),
+  })
+  .strict();

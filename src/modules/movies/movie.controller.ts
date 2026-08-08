@@ -10,6 +10,7 @@ import {
 import {
   parseCreateMovie,
   parseIncludeDirector,
+  parseMovieListQuery,
   parseUpdateMovie,
 } from "./movie.validation";
 
@@ -23,12 +24,10 @@ const create: RequestHandler = async (request, response) => {
 };
 
 const list: RequestHandler = async (request, response) => {
-  const includeDirector = parseIncludeDirector(request.query.include);
-  const movies = await listMovies({ includeDirector });
+  const { includeDirector, pagination } = parseMovieListQuery(request.query);
+  const movies = await listMovies({ includeDirector, pagination });
 
-  response.status(200).json({
-    data: movies,
-  });
+  response.status(200).json(movies);
 };
 
 const get: RequestHandler = async (request, response) => {

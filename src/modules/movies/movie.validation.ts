@@ -2,10 +2,12 @@ import { z } from "zod";
 import {
   boundedNumber,
   objectIdSchema,
+  paginationQuerySchema,
   parseSchema,
   requiredString,
   strictDate,
 } from "../../shared/validation/request-validation";
+import { resolvePagination, type PaginationOptions } from "../../shared/pagination/pagination";
 import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
 
 const movieSchema = z
@@ -30,6 +32,12 @@ const movieUpdateSchema = movieSchema
     message: "At least one movie field must be provided for update.",
   });
 
+const movieListQuerySchema = paginationQuerySchema
+  .extend({
+    include: z.literal("director").optional(),
+  })
+  .strict();
+
 export const parseCreateMovie = (body: unknown): CreateMovieInput => {
   return parseSchema(movieSchema, body);
 };
@@ -48,4 +56,18 @@ export const parseIncludeDirector = (value: unknown): boolean => {
   });
 
   return true;
+};
+
+export interface MovieListQuery {
+  includeDirector: boolean;
+  pagination: PaginationOptions;
+}
+
+export const parseMovieListQuery = (query: unknown): MovieListQuery => {
+  const parsed = parseSchema(movieListQuerySchema, query);
+
+  return {
+    includeDirector: parsed.include !== undefined,
+    pagination: resolvePagination(parsed),
+  };
 };

@@ -20,6 +20,7 @@ MovieHub is a RESTful backend for managing movies and directors. It uses a layer
 - Movie responses return `directorId` by default. This keeps the default payload small and avoids an implicit database join.
 - `GET /api/v1/movies` and `GET /api/v1/movies/:id` support `?include=director`. When requested, the response keeps `directorId` and adds a serialized `director` object.
 - Director reads return only director fields by default. `GET /api/v1/directors` and `GET /api/v1/directors/:id` support `?include=movies` when the related movie list is needed.
+- Movie and director collection endpoints support one-based `page` and `limit` query parameters. Responses include `total`, `totalPages`, `hasNext` and `hasPrevious` metadata; `limit` defaults to `20` and is capped at `100`.
 - Director fields can be partially updated with `PATCH /api/v1/directors/:id`; an empty update body is rejected.
 - A director cannot be deleted while at least one movie references it. The API returns `409 Conflict` with the `DIRECTOR_HAS_MOVIES` error code. The client must delete or reassign the movies first; the API does not cascade-delete them.
 - Authentication and authorization are not defined by the case requirements, so they are intentionally outside the current API scope. A production version should protect write operations with the selected identity and access-control strategy.
@@ -193,6 +194,33 @@ The expanded response adds a serialized director without removing `directorId`:
 
 For movie endpoints, `include` currently accepts only `director`. Other values return `400 Validation Error` so unsupported response expansions do not silently change the API contract. Director endpoints use the separate `include=movies` value.
 
+### Collection pagination
+
+Movie and director collection endpoints use the same pagination contract:
+
+```http
+GET /api/v1/movies?page=1&limit=20
+GET /api/v1/directors?page=2&limit=10&include=movies
+```
+
+The response contains the page data and metadata:
+
+```json
+{
+  "data": [],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 42,
+    "totalPages": 3,
+    "hasNext": true,
+    "hasPrevious": false
+  }
+}
+```
+
+`page` must be a positive integer. `limit` must be between `1` and `100`. On `GET /api/v1/directors?include=movies`, pagination applies to the director collection; the `movies` array for each returned director is currently loaded as a complete relation. Nested movie pagination is intentionally kept as a separate future contract decision.
+
 ### Director reads and updates
 
 The default director response contains only the director resource:
@@ -268,7 +296,8 @@ Movie reads use a cache-aside strategy:
 - The default list and detail responses have separate Redis keys.
 - `include=director` responses use separate `:with-director` key variants.
 - List entries expire after 60 seconds and detail entries expire after 300 seconds.
-- Movie create, update and delete operations invalidate both list variants.
+- Every movie list cache key includes its `page`, `limit` and `include=director` response variant.
+- Movie create, update and delete operations invalidate all paginated movie list variants through a non-blocking Redis scan.
 - Update and delete operations invalidate both detail variants for the affected movie.
 - Director updates invalidate the expanded movie list and all expanded movie detail entries that reference the updated director.
 
@@ -285,7 +314,7 @@ npm run build
 npm test
 ```
 
-`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, director reads and updates, `include=movies`, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
+`npm test` discovers both the HTTP integration suite and the isolated Zod validation suite. The tests cover dependency health, the landing page, Swagger/OpenAPI routes, director reads and updates, `include=movies`, collection pagination, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, strict date and request-shape validation, input validation and not-found behavior.
 
 ## Deployment notes
 

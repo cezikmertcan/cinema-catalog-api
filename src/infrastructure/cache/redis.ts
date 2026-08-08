@@ -134,3 +134,21 @@ export const deleteKey = async (key: string): Promise<void> => {
     await redisClient.del(key);
   }, undefined);
 };
+
+export const deleteKeysByPattern = async (pattern: string): Promise<void> => {
+  await withCache(async (redisClient) => {
+    const keys: string[] = [];
+
+    for await (const batch of redisClient.scanIterator({
+      MATCH: pattern,
+      COUNT: 100,
+    })) {
+      const scannedKeys = Array.isArray(batch) ? batch : [batch];
+      keys.push(...scannedKeys.map((key) => String(key)));
+    }
+
+    if (keys.length > 0) {
+      await Promise.all(keys.map((key) => redisClient.del(key)));
+    }
+  }, undefined);
+};

@@ -97,6 +97,12 @@ export const openApiDocument = {
           {
             $ref: "#/components/parameters/IncludeMovies",
           },
+          {
+            $ref: "#/components/parameters/Page",
+          },
+          {
+            $ref: "#/components/parameters/Limit",
+          },
         ],
         responses: {
           "200": {
@@ -293,6 +299,12 @@ export const openApiDocument = {
           {
             $ref: "#/components/parameters/IncludeDirector",
           },
+          {
+            $ref: "#/components/parameters/Page",
+          },
+          {
+            $ref: "#/components/parameters/Limit",
+          },
         ],
         responses: {
           "200": {
@@ -433,10 +445,35 @@ export const openApiDocument = {
         in: "query",
         required: false,
         description:
-          "Set to movies to include the movies that reference the director.",
+          "Set to movies to include the movies that reference each returned director. On collection requests, page and limit paginate the director collection; nested movie arrays are not paginated in this version.",
         schema: {
           type: "string",
           enum: ["movies"],
+        },
+      },
+      Page: {
+        name: "page",
+        in: "query",
+        required: false,
+        description: "One-based page number. Defaults to 1.",
+        schema: {
+          type: "integer",
+          minimum: 1,
+          default: 1,
+          example: 2,
+        },
+      },
+      Limit: {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "Number of items per page. Defaults to 20 and cannot exceed 100.",
+        schema: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          default: 20,
+          example: 20,
         },
       },
     },
@@ -826,7 +863,7 @@ export const openApiDocument = {
       },
       DirectorListResponse: {
         type: "object",
-        required: ["data"],
+        required: ["data", "meta"],
         properties: {
           data: {
             type: "array",
@@ -834,17 +871,23 @@ export const openApiDocument = {
               $ref: "#/components/schemas/Director",
             },
           },
+          meta: {
+            $ref: "#/components/schemas/PaginationMeta",
+          },
         },
       },
       DirectorListWithMoviesResponse: {
         type: "object",
-        required: ["data"],
+        required: ["data", "meta"],
         properties: {
           data: {
             type: "array",
             items: {
               $ref: "#/components/schemas/DirectorWithMovies",
             },
+          },
+          meta: {
+            $ref: "#/components/schemas/PaginationMeta",
           },
         },
       },
@@ -859,13 +902,52 @@ export const openApiDocument = {
       },
       MovieListResponse: {
         type: "object",
-        required: ["data"],
+        required: ["data", "meta"],
         properties: {
           data: {
             type: "array",
             items: {
               $ref: "#/components/schemas/Movie",
             },
+          },
+          meta: {
+            $ref: "#/components/schemas/PaginationMeta",
+          },
+        },
+      },
+      PaginationMeta: {
+        type: "object",
+        required: [
+          "page",
+          "limit",
+          "total",
+          "totalPages",
+          "hasNext",
+          "hasPrevious",
+        ],
+        properties: {
+          page: {
+            type: "integer",
+            minimum: 1,
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+          },
+          total: {
+            type: "integer",
+            minimum: 0,
+          },
+          totalPages: {
+            type: "integer",
+            minimum: 0,
+          },
+          hasNext: {
+            type: "boolean",
+          },
+          hasPrevious: {
+            type: "boolean",
           },
         },
       },

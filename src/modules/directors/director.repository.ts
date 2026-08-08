@@ -1,4 +1,9 @@
 import { DirectorModel, type DirectorDocument } from "./director.model";
+import {
+  paginationOffset,
+  type PaginatedQueryResult,
+  type PaginationOptions,
+} from "../../shared/pagination/pagination";
 import type {
   CreateDirectorInput,
   UpdateDirectorInput,
@@ -10,8 +15,28 @@ export const insertDirector = async (
   return DirectorModel.create(input);
 };
 
-export const findAllDirectors = async (): Promise<DirectorDocument[]> => {
-  return DirectorModel.find().sort({ firstName: 1, secondName: 1 }).exec();
+export const findAllDirectors = async (
+  pagination?: PaginationOptions,
+): Promise<PaginatedQueryResult<DirectorDocument>> => {
+  const query = DirectorModel.find().sort({
+    firstName: 1,
+    secondName: 1,
+    _id: 1,
+  });
+
+  if (pagination !== undefined) {
+    query.skip(paginationOffset(pagination)).limit(pagination.limit);
+  }
+
+  const [directors, total] = await Promise.all([
+    query.exec(),
+    DirectorModel.countDocuments().exec(),
+  ]);
+
+  return {
+    items: directors,
+    total,
+  };
 };
 
 export const findDirectorById = async (
