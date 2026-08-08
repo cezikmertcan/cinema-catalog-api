@@ -9,3 +9,7 @@ export interface CreateMovieInput {
 }
 
 export type UpdateMovieInput = Partial<CreateMovieInput>;
+
+export interface MovieQueryOptions {
+  includeDirector?: boolean;
+}

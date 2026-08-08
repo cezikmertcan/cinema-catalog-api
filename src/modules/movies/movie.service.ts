@@ -24,7 +24,18 @@ import {
   movieListCacheTtlSeconds,
 } from "./movie.cache";
 import { serializeMovie, type MovieResponse } from "./movie.serializer";
-import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
+import type {
+  CreateMovieInput,
+  MovieQueryOptions,
+  UpdateMovieInput,
+} from "./movie.types";
+
+const invalidateMovieListCaches = async (): Promise<void> => {
+  await Promise.all([
+    deleteKey(movieListCacheKey()),
+    deleteKey(movieListCacheKey(true)),
+  ]);
+};
 
 const ensureDirectorExists = async (directorId: string): Promise<void> => {
   if (!(await directorExists(directorId))) {
@@ -47,42 +58,51 @@ export const createMovie = async (input: CreateMovieInput) => {
   const response = serializeMovie(movie);
   await Promise.all([
     setJson(movieCacheKey(response.id), response, movieCacheTtlSeconds),
-    deleteKey(movieListCacheKey),
+    invalidateMovieListCaches(),
   ]);
 
   return response;
 };
 
-export const listMovies = async (): Promise<MovieResponse[]> => {
-  const cachedMovies = await getJson<MovieResponse[]>(movieListCacheKey);
+export const listMovies = async (
+  options: MovieQueryOptions = {},
+): Promise<MovieResponse[]> => {
+  const includeDirector = options.includeDirector === true;
+  const cacheKey = movieListCacheKey(includeDirector);
+  const cachedMovies = await getJson<MovieResponse[]>(cacheKey);
 
   if (cachedMovies !== null) {
     return cachedMovies;
   }
 
-  const movies = await findAllMovies();
+  const movies = await findAllMovies({ includeDirector });
   const response = movies.map(serializeMovie);
-  await setJson(movieListCacheKey, response, movieListCacheTtlSeconds);
+  await setJson(cacheKey, response, movieListCacheTtlSeconds);
 
   return response;
 };
 
-export const getMovie = async (id: unknown): Promise<MovieResponse> => {
+export const getMovie = async (
+  id: unknown,
+  options: MovieQueryOptions = {},
+): Promise<MovieResponse> => {
   const movieId = readObjectId(id, "movieId");
-  const cachedMovie = await getJson<MovieResponse>(movieCacheKey(movieId));
+  const includeDirector = options.includeDirector === true;
+  const cacheKey = movieCacheKey(movieId, includeDirector);
+  const cachedMovie = await getJson<MovieResponse>(cacheKey);
 
   if (cachedMovie !== null) {
     return cachedMovie;
   }
 
-  const movie = await findMovieById(movieId);
+  const movie = await findMovieById(movieId, { includeDirector });
 
   if (movie === null) {
     throw new AppError(404, "MOVIE_NOT_FOUND", `Movie ${movieId} was not found.`);
   }
 
   const response = serializeMovie(movie);
-  await setJson(movieCacheKey(movieId), response, movieCacheTtlSeconds);
+  await setJson(cacheKey, response, movieCacheTtlSeconds);
 
   return response;
 };
@@ -112,7 +132,8 @@ export const updateMovie = async (
   const response = serializeMovie(movie);
   await Promise.all([
     setJson(movieCacheKey(movieId), response, movieCacheTtlSeconds),
-    deleteKey(movieListCacheKey),
+    deleteKey(movieCacheKey(movieId, true)),
+    invalidateMovieListCaches(),
   ]);
 
   return response;
@@ -128,6 +149,7 @@ export const deleteMovie = async (id: unknown): Promise<void> => {
 
   await Promise.all([
     deleteKey(movieCacheKey(movieId)),
-    deleteKey(movieListCacheKey),
+    deleteKey(movieCacheKey(movieId, true)),
+    invalidateMovieListCaches(),
   ]);
 };

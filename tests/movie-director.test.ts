@@ -90,7 +90,8 @@ before(async () => {
 beforeEach(async () => {
   await Promise.all([
     mongoose.connection.dropDatabase(),
-    deleteKey(movieListCacheKey),
+    deleteKey(movieListCacheKey()),
+    deleteKey(movieListCacheKey(true)),
   ]);
 });
 
@@ -166,13 +167,52 @@ test("supports the director and movie lifecycle", async () => {
     (movieById.body as { data: { id: string } }).data.id,
     movieId,
   );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      (movieById.body as { data: object }).data,
+      "director",
+    ),
+    false,
+  );
+
+  const movieByIdWithDirector = await requestJson(
+    `/api/v1/movies/${movieId}?include=director`,
+  );
+  assert.equal(movieByIdWithDirector.status, 200);
+  const expandedMovie = movieByIdWithDirector.body as {
+    data: {
+      directorId: string;
+      director: { id: string; firstName: string };
+    };
+  };
+  assert.equal(expandedMovie.data.directorId, directorId);
+  assert.equal(expandedMovie.data.director.id, directorId);
+  assert.equal(expandedMovie.data.director.firstName, "Christopher");
+  assert.equal(
+    (await getJson<MovieResponse>(movieCacheKey(movieId, true)))?.director?.id,
+    directorId,
+  );
 
   const movies = await requestJson("/api/v1/movies");
   assert.equal(movies.status, 200);
   assert.equal((movies.body as { data: unknown[] }).data.length, 1);
   assert.equal(
-    (await getJson<MovieResponse[]>(movieListCacheKey))?.length,
+    (await getJson<MovieResponse[]>(movieListCacheKey()))?.length,
     1,
+  );
+
+  const moviesWithDirector = await requestJson(
+    "/api/v1/movies?include=director",
+  );
+  assert.equal(moviesWithDirector.status, 200);
+  const expandedMovieList = moviesWithDirector.body as {
+    data: Array<{ director: { id: string } }>;
+  };
+  assert.equal(expandedMovieList.data[0]?.director.id, directorId);
+  assert.equal(
+    (await getJson<MovieResponse[]>(movieListCacheKey(true)))?.[0]?.director
+      ?.id,
+    directorId,
   );
 
   const updatedMovie = await requestJson(`/api/v1/movies/${movieId}`, {
@@ -188,17 +228,48 @@ test("supports the director and movie lifecycle", async () => {
     (updatedMovie.body as { data: { rating: number } }).data.rating,
     9,
   );
-  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey), null);
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey()), null);
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
   assert.equal(
     (await getJson<MovieResponse>(movieCacheKey(movieId)))?.rating,
     9,
   );
+  assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
+
+  const invalidInclude = await requestJson(
+    `/api/v1/movies/${movieId}?include=director-profile`,
+  );
+  assert.equal(invalidInclude.status, 400);
+  assert.deepEqual(invalidInclude.body, {
+    error: {
+      code: "VALIDATION_ERROR",
+      message: 'include must be "director" when provided.',
+    },
+  });
+
+  const directorDeleteConflict = await requestJson(
+    `/api/v1/directors/${directorId}`,
+    { method: "DELETE" },
+  );
+  assert.equal(directorDeleteConflict.status, 409);
+  assert.deepEqual(directorDeleteConflict.body, {
+    error: {
+      code: "DIRECTOR_HAS_MOVIES",
+      message: `Director ${directorId} cannot be deleted while movies reference it.`,
+    },
+  });
+
+  const movieAfterConflict = await requestJson(`/api/v1/movies/${movieId}`);
+  assert.equal(movieAfterConflict.status, 200);
 
   const deletedMovie = await requestJson(`/api/v1/movies/${movieId}`, {
     method: "DELETE",
   });
   assert.equal(deletedMovie.status, 204);
   assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId)), null);
+  assert.equal(await getJson<MovieResponse>(movieCacheKey(movieId, true)), null);
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey()), null);
+  assert.equal(await getJson<MovieResponse[]>(movieListCacheKey(true)), null);
 
   const deletedDirector = await requestJson(`/api/v1/directors/${directorId}`, {
     method: "DELETE",

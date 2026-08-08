@@ -1,0 +1,231 @@
+# MovieHub API
+
+MovieHub is a RESTful backend for managing movies and directors. It uses a layered structure with explicit validation, consistent JSON errors, MongoDB persistence, Redis cache-aside reads, and Docker-based local infrastructure.
+
+## Technology
+
+- Node.js and TypeScript
+- Express
+- MongoDB with Mongoose
+- Redis
+- Docker and Docker Compose
+- Node.js test runner
+- Postman for request collection and manual API testing
+
+## Scope and design decisions
+
+- A movie stores a required `directorId` reference to a director.
+- Movie responses return `directorId` by default. This keeps the default payload small and avoids an implicit database join.
+- `GET /api/v1/movies` and `GET /api/v1/movies/:id` support `?include=director`. When requested, the response keeps `directorId` and adds a serialized `director` object.
+- A director cannot be deleted while at least one movie references it. The API returns `409 Conflict` with the `DIRECTOR_HAS_MOVIES` error code. The client must delete or reassign the movies first; the API does not cascade-delete them.
+- Authentication and authorization are not defined by the case requirements, so they are intentionally outside the current API scope. A production version should protect write operations with the selected identity and access-control strategy.
+
+## Project structure
+
+```text
+src/
+  config/          Environment parsing
+  infrastructure/  MongoDB and Redis adapters
+  middleware/      Error and routing middleware
+  modules/
+    directors/     Director model, repository, service, controller and routes
+    movies/        Movie model, repository, service, controller, cache and routes
+  shared/          HTTP errors, validation and reusable helpers
+tests/             HTTP integration tests for the movie/director flow
+```
+
+The request flow is kept explicit:
+
+```text
+route -> controller -> validation -> service -> repository/infrastructure
+```
+
+## Requirements
+
+- Node.js 24 or a compatible current Node.js release
+- npm
+- Docker Desktop with Docker Compose
+
+## Local setup with Docker
+
+1. Install dependencies:
+
+   ```bash
+   npm ci
+   ```
+
+2. Create a local environment file if you want to override the defaults:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Start the API, MongoDB and Redis:
+
+   ```bash
+   docker compose up --build
+   ```
+
+The API is available at `http://localhost:3000`. Docker Compose waits for the MongoDB and Redis health checks before starting the API container.
+
+Stop the stack with:
+
+```bash
+docker compose down
+```
+
+The MongoDB data volume is named `mongo-data` and is kept between normal `docker compose down` and subsequent starts.
+
+## Local development without the API container
+
+The MongoDB and Redis services can be started through Docker while the TypeScript server runs on the host:
+
+```bash
+docker compose up -d mongo redis
+npm run dev
+```
+
+The default host-based connection values are:
+
+```text
+MONGODB_URI=mongodb://127.0.0.1:27017/moviehub
+REDIS_URL=redis://127.0.0.1:6379
+```
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | Runtime environment label |
+| `PORT` | `3000` | HTTP port |
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/moviehub` | Application MongoDB connection |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Application Redis connection |
+| `TEST_MONGODB_URI` | `mongodb://127.0.0.1:27017/moviehub_test` | MongoDB connection used by integration tests |
+| `TEST_REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection used by integration tests |
+
+Do not commit `.env` files or credentials. `.env.example` contains local, non-sensitive defaults only. Hosted environments must provide their own secret values and allow the hosting runtime to reach MongoDB and Redis.
+
+## API
+
+All domain routes use the `/api/v1` prefix.
+
+| Method | Path | Description | Success |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Checks MongoDB and Redis connectivity and latency | `200` or `503` |
+| `POST` | `/api/v1/directors` | Creates a director | `201` |
+| `DELETE` | `/api/v1/directors/:id` | Deletes an unreferenced director | `204` |
+| `POST` | `/api/v1/movies` | Creates a movie | `201` |
+| `GET` | `/api/v1/movies` | Lists movies | `200` |
+| `GET` | `/api/v1/movies/:id` | Gets one movie | `200` |
+| `PATCH` | `/api/v1/movies/:id` | Updates one or more movie fields | `200` |
+| `DELETE` | `/api/v1/movies/:id` | Deletes a movie | `204` |
+
+### Optional director expansion
+
+The default movie response contains the reference only:
+
+```http
+GET /api/v1/movies/:id
+```
+
+```json
+{
+  "data": {
+    "id": "665f2c5b7c2f5c4f8f0d1111",
+    "title": "Inception",
+    "description": "A professional thief who steals secrets through dreams.",
+    "releaseDate": "2010-07-16",
+    "genre": "Science Fiction",
+    "rating": 8.8,
+    "imdbId": "tt1375666",
+    "directorId": "665f2c5b7c2f5c4f8f0d2222"
+  }
+}
+```
+
+Use the same option on the list or detail endpoint when the related resource is needed:
+
+```http
+GET /api/v1/movies?include=director
+GET /api/v1/movies/:id?include=director
+```
+
+The expanded response adds a serialized director without removing `directorId`:
+
+```json
+{
+  "data": {
+    "id": "665f2c5b7c2f5c4f8f0d1111",
+    "title": "Inception",
+    "directorId": "665f2c5b7c2f5c4f8f0d2222",
+    "director": {
+      "id": "665f2c5b7c2f5c4f8f0d2222",
+      "firstName": "Christopher",
+      "secondName": "Nolan",
+      "birthDate": "1970-07-30",
+      "bio": "British-American filmmaker."
+    }
+  }
+}
+```
+
+`include` currently accepts only `director`. Other values return `400 Validation Error` so unsupported response expansions do not silently change the API contract.
+
+### Relationship conflict
+
+Deleting a director that is still referenced by a movie returns:
+
+```json
+{
+  "error": {
+    "code": "DIRECTOR_HAS_MOVIES",
+    "message": "Director <director-id> cannot be deleted while movies reference it."
+  }
+}
+```
+
+The response status is `409 Conflict`, and the referenced movie remains available.
+
+### Error format
+
+Errors use a consistent shape:
+
+```json
+{
+  "error": {
+    "code": "MOVIE_NOT_FOUND",
+    "message": "Movie <movie-id> was not found."
+  }
+}
+```
+
+Malformed JSON, invalid fields and invalid identifiers return `400`; missing resources return `404`; relationship or uniqueness conflicts return `409`; unexpected failures return `500`.
+
+## Caching
+
+Movie reads use a cache-aside strategy:
+
+- The default list and detail responses have separate Redis keys.
+- `include=director` responses use separate `:with-director` key variants.
+- List entries expire after 60 seconds and detail entries expire after 300 seconds.
+- Movie create, update and delete operations invalidate both list variants.
+- Update and delete operations invalidate both detail variants for the affected movie.
+
+This prevents a response without the director object from being returned for an expanded request, and ensures mutations do not leave stale relationship data in Redis.
+
+## Tests and checks
+
+The integration suite requires MongoDB and Redis. The default test configuration uses the `moviehub_test` database and clears it before each test.
+
+```bash
+npm run typecheck
+npm run test:typecheck
+npm run build
+npm test
+```
+
+The tests cover dependency health, the director/movie lifecycle, optional director expansion, cache invalidation, the director deletion conflict, input validation and not-found behavior.
+
+## Deployment notes
+
+For a hosted deployment, configure `MONGODB_URI` and `REDIS_URL` as environment variables in the hosting provider. MongoDB Atlas must allow the provider's runtime network access through its IP access list or a properly configured private connection. Credentials must be rotated if they are ever exposed and must never be stored in the repository.

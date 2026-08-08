@@ -9,6 +9,7 @@ import {
   readString,
   type JsonObject,
 } from "../../shared/validation/request-validation";
+import { AppError } from "../../shared/errors/app-error";
 import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
 
 const movieFields = [
@@ -83,4 +84,20 @@ export const parseUpdateMovie = (body: unknown): UpdateMovieInput => {
   assertAtLeastOneField(update, "At least one movie field must be provided for update.");
 
   return update;
+};
+
+export const parseIncludeDirector = (value: unknown): boolean => {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (value !== "director") {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      'include must be "director" when provided.',
+    );
+  }
+
+  return true;
 };

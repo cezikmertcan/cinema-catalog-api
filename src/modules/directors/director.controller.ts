@@ -5,15 +5,7 @@ import {
   createDirector,
   deleteDirector,
 } from "./director.service";
-import type { DirectorDocument } from "./director.model";
-
-const serializeDirector = (director: DirectorDocument) => ({
-  id: director._id.toString(),
-  firstName: director.firstName,
-  secondName: director.secondName,
-  birthDate: director.birthDate.toISOString().slice(0, 10),
-  bio: director.bio,
-});
+import { serializeDirector } from "./director.serializer";
 
 const create: RequestHandler = async (request, response) => {
   const input = parseCreateDirector(request.body);

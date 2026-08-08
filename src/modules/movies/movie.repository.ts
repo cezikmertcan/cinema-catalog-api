@@ -1,6 +1,10 @@
 import { Types } from "mongoose";
 import { MovieModel, type MovieDocument } from "./movie.model";
-import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
+import type {
+  CreateMovieInput,
+  MovieQueryOptions,
+  UpdateMovieInput,
+} from "./movie.types";
 
 export type PersistedMovieInput = Omit<CreateMovieInput, "directorId"> & {
   directorId: Types.ObjectId;
@@ -16,14 +20,39 @@ export const insertMovie = async (
   return MovieModel.create(input);
 };
 
-export const findAllMovies = async (): Promise<MovieDocument[]> => {
-  return MovieModel.find().sort({ releaseDate: -1, title: 1 }).exec();
+export const findAllMovies = async (
+  options: MovieQueryOptions = {},
+): Promise<MovieDocument[]> => {
+  const query = MovieModel.find().sort({ releaseDate: -1, title: 1 });
+
+  if (options.includeDirector === true) {
+    query.populate({
+      path: "directorId",
+      select: "firstName secondName birthDate bio",
+    });
+  }
+
+  return query.exec();
 };
 
 export const findMovieById = async (
   id: string,
+  options: MovieQueryOptions = {},
 ): Promise<MovieDocument | null> => {
-  return MovieModel.findById(id).exec();
+  const query = MovieModel.findById(id);
+
+  if (options.includeDirector === true) {
+    query.populate({
+      path: "directorId",
+      select: "firstName secondName birthDate bio",
+    });
+  }
+
+  return query.exec();
+};
+
+export const moviesExistForDirector = async (id: string): Promise<boolean> => {
+  return Boolean(await MovieModel.exists({ directorId: new Types.ObjectId(id) }));
 };
 
 export const updateMovieById = async (

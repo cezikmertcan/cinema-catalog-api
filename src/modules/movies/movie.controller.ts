@@ -9,6 +9,7 @@ import {
 } from "./movie.service";
 import {
   parseCreateMovie,
+  parseIncludeDirector,
   parseUpdateMovie,
 } from "./movie.validation";
 
@@ -21,8 +22,9 @@ const create: RequestHandler = async (request, response) => {
   });
 };
 
-const list: RequestHandler = async (_request, response) => {
-  const movies = await listMovies();
+const list: RequestHandler = async (request, response) => {
+  const includeDirector = parseIncludeDirector(request.query.include);
+  const movies = await listMovies({ includeDirector });
 
   response.status(200).json({
     data: movies,
@@ -30,7 +32,8 @@ const list: RequestHandler = async (_request, response) => {
 };
 
 const get: RequestHandler = async (request, response) => {
-  const movie = await getMovie(request.params.id);
+  const includeDirector = parseIncludeDirector(request.query.include);
+  const movie = await getMovie(request.params.id, { includeDirector });
 
   response.status(200).json({
     data: movie,
