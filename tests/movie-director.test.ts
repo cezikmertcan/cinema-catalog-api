@@ -163,9 +163,11 @@ test("serves the landing page and Swagger documentation", async () => {
 
   const document = openApi.body as {
     openapi: string;
+    servers: Array<{ url: string }>;
     paths: Record<string, unknown>;
   };
   assert.equal(document.openapi, "3.0.3");
+  assert.equal(document.servers[0]?.url, "/");
   assert.equal(typeof document.paths["/api/v1/directors"], "object");
   assert.equal(typeof document.paths["/api/v1/directors/{id}"], "object");
   assert.equal(typeof document.paths["/api/v1/movies"], "object");
@@ -174,7 +176,25 @@ test("serves the landing page and Swagger documentation", async () => {
   const docs = await requestText("/docs");
   assert.equal(docs.status, 200);
   assert.match(docs.contentType ?? "", /text\/html/);
-  assert.match(docs.body, /Swagger UI/);
+  assert.match(docs.body, /id="swagger-ui"/);
+  assert.match(
+    docs.body,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/swagger-ui-dist@5\.32\.12\/swagger-ui\.css/,
+  );
+  assert.match(
+    docs.body,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/swagger-ui-dist@5\.32\.12\/swagger-ui-bundle\.js/,
+  );
+  assert.match(
+    docs.body,
+    /https:\/\/cdn\.jsdelivr\.net\/npm\/swagger-ui-dist@5\.32\.12\/swagger-ui-standalone-preset\.js/,
+  );
+  assert.match(docs.body, /url: "\/openapi\.json"/);
+  assert.doesNotMatch(docs.body, /src="\.\/swagger-ui-/);
+
+  const docsWithTrailingSlash = await requestText("/docs/");
+  assert.equal(docsWithTrailingSlash.status, 200);
+  assert.match(docsWithTrailingSlash.contentType ?? "", /text\/html/);
 });
 
 test("supports the director and movie lifecycle", async () => {

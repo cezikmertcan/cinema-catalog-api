@@ -8,8 +8,8 @@ export const openApiDocument = {
   },
   servers: [
     {
-      url: "http://localhost:3000",
-      description: "Local Docker Compose server",
+      url: "/",
+      description: "Current API origin",
     },
   ],
   tags: [

@@ -1,8 +1,8 @@
 import express, { type Express, type RequestHandler } from "express";
-import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env";
 import { openApiDocument } from "./docs/openapi";
 import { rootPage } from "./docs/root-page";
+import { swaggerPage } from "./docs/swagger-page";
 import {
   checkCacheHealth,
   connectToCache,
@@ -59,7 +59,9 @@ export const buildApp = (): Express => {
   app.get("/openapi.json", (_request, response) => {
     response.json(openApiDocument);
   });
-  app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+  app.get(["/docs", "/docs/"], (_request, response) => {
+    response.type("html").send(swaggerPage);
+  });
   app.get("/health", healthHandler);
 
   app.use(dependencyMiddleware);
