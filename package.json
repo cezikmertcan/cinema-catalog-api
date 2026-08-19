@@ -1,27 +1,42 @@
 {
   "name": "cinema-catalog-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Production-minded REST API for managing movies and directors.",
+  "private": true,
+  "license": "MIT",
+  "keywords": [
+    "api",
+    "cinema",
+    "movies",
+    "directors",
+    "express",
+    "typescript",
+    "mongodb",
+    "redis"
+  ],
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node --env-file-if-exists=.env dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/movie-director.test.ts",
-    "test:typecheck": "tsc -p tsconfig.test.json --noEmit"
+    "test": "node --env-file-if-exists=.env node_modules/tsx/dist/cli.mjs --test tests/*.test.ts",
+    "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "ci": "npm run typecheck && npm run test:typecheck && npm run build && npm test"
   },
-  "keywords": [],
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
     "mongoose": "^9.9.1",
-    "redis": "^6.2.0"
+    "redis": "^6.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
     "tsx": "^4.23.10",
-    "typescript": "^7.0.2"
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

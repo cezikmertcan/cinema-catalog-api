@@ -9,3 +9,9 @@ export interface CreateMovieInput {
 }
 
 export type UpdateMovieInput = Partial<CreateMovieInput>;
+
+export interface MovieQueryOptions {
+  includeDirector?: boolean;
+  pagination?: PaginationOptions;
+}
+import type { PaginationOptions } from "../../shared/pagination/pagination";

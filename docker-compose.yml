@@ -1,3 +1,5 @@
+name: cinema-catalog-api
+
 services:
   api:
     build:

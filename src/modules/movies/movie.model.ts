@@ -59,5 +59,14 @@ const movieSchema = new Schema<MovieEntity>(
   },
 );
 
+movieSchema.index(
+  { releaseDate: -1, title: 1 },
+  { name: "movies_release_date_title_sort" },
+);
+movieSchema.index(
+  { directorId: 1, releaseDate: -1, title: 1 },
+  { name: "movies_director_release_date_title" },
+);
+
 export const MovieModel = model<MovieEntity>("Movie", movieSchema);
 export type MovieDocument = HydratedDocument<MovieEntity>;

@@ -1,6 +1,15 @@
 import { Types } from "mongoose";
 import { MovieModel, type MovieDocument } from "./movie.model";
-import type { CreateMovieInput, UpdateMovieInput } from "./movie.types";
+import {
+  paginationOffset,
+  type PaginatedQueryResult,
+  type PaginationOptions,
+} from "../../shared/pagination/pagination";
+import type {
+  CreateMovieInput,
+  MovieQueryOptions,
+  UpdateMovieInput,
+} from "./movie.types";
 
 export type PersistedMovieInput = Omit<CreateMovieInput, "directorId"> & {
   directorId: Types.ObjectId;
@@ -16,14 +25,97 @@ export const insertMovie = async (
   return MovieModel.create(input);
 };
 
-export const findAllMovies = async (): Promise<MovieDocument[]> => {
-  return MovieModel.find().sort({ releaseDate: -1, title: 1 }).exec();
+export const findAllMovies = async (
+  options: MovieQueryOptions = {},
+): Promise<PaginatedQueryResult<MovieDocument>> => {
+  const query = MovieModel.find().sort({ releaseDate: -1, title: 1, _id: 1 });
+
+  if (options.pagination !== undefined) {
+    applyPagination(query, options.pagination);
+  }
+
+  if (options.includeDirector === true) {
+    query.populate({
+      path: "directorId",
+      select: "firstName secondName birthDate bio",
+    });
+  }
+
+  const [movies, total] = await Promise.all([
+    query.exec(),
+    MovieModel.countDocuments().exec(),
+  ]);
+
+  return {
+    items: movies,
+    total,
+  };
+};
+
+const applyPagination = (
+  query: ReturnType<typeof MovieModel.find>,
+  pagination: PaginationOptions,
+): void => {
+  query.skip(paginationOffset(pagination)).limit(pagination.limit);
 };
 
 export const findMovieById = async (
   id: string,
+  options: MovieQueryOptions = {},
 ): Promise<MovieDocument | null> => {
-  return MovieModel.findById(id).exec();
+  const query = MovieModel.findById(id);
+
+  if (options.includeDirector === true) {
+    query.populate({
+      path: "directorId",
+      select: "firstName secondName birthDate bio",
+    });
+  }
+
+  return query.exec();
+};
+
+export const findPaginatedMoviesByDirectorIds = async (
+  directorIds: readonly string[],
+  pagination: PaginationOptions,
+): Promise<Map<string, PaginatedQueryResult<MovieDocument>>> => {
+  const results = await Promise.all(
+    directorIds.map(async (directorId) => {
+      const filter = { directorId: new Types.ObjectId(directorId) };
+      const query = MovieModel.find(filter).sort({
+        releaseDate: -1,
+        title: 1,
+        _id: 1,
+      });
+
+      applyPagination(query, pagination);
+
+      const [movies, total] = await Promise.all([
+        query.exec(),
+        MovieModel.countDocuments(filter).exec(),
+      ]);
+
+      return [directorId, { items: movies, total }] as const;
+    }),
+  );
+
+  return new Map(results);
+};
+
+export const findMovieIdsByDirectorId = async (
+  directorId: string,
+): Promise<string[]> => {
+  const movies = await MovieModel.find({
+    directorId: new Types.ObjectId(directorId),
+  })
+    .select({ _id: 1 })
+    .exec();
+
+  return movies.map((movie) => movie._id.toString());
+};
+
+export const moviesExistForDirector = async (id: string): Promise<boolean> => {
+  return Boolean(await MovieModel.exists({ directorId: new Types.ObjectId(id) }));
 };
 
 export const updateMovieById = async (
