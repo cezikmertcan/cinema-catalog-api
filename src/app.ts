@@ -13,6 +13,7 @@ import {
 } from "./infrastructure/database/mongoose";
 import { errorHandler } from "./middleware/error-handler";
 import { notFoundHandler } from "./middleware/not-found-handler";
+import { authRouter } from "./modules/auth/auth.routes";
 import { directorRouter } from "./modules/directors/director.routes";
 import { movieRouter } from "./modules/movies/movie.routes";
 
@@ -65,6 +66,7 @@ export const buildApp = (): Express => {
   app.get("/health", healthHandler);
 
   app.use(dependencyMiddleware);
+  app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/directors", directorRouter);
   app.use("/api/v1/movies", movieRouter);
 

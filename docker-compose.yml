@@ -10,6 +10,12 @@ services:
       PORT: 3000
       MONGODB_URI: mongodb://mongo:27017/cinema_catalog
       REDIS_URL: redis://redis:6379
+      AUTH_JWT_SECRET: local-development-secret-change-before-production
+      AUTH_JWT_ISSUER: cinema-catalog-api
+      AUTH_JWT_AUDIENCE: cinema-catalog-api-client
+      AUTH_ACCESS_TOKEN_TTL_SECONDS: 900
+      AUTH_REFRESH_TOKEN_TTL_SECONDS: 2592000
+      AUTH_REDIS_PREFIX: cinema-catalog:auth
     ports:
       - "3000:3000"
     depends_on:

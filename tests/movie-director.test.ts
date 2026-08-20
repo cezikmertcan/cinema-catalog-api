@@ -24,6 +24,8 @@ import {
   movieListCachePattern,
 } from "../src/modules/movies/movie.cache";
 import type { MovieResponse } from "../src/modules/movies/movie.serializer";
+import { createAccessToken } from "../src/modules/auth/auth.token";
+import { UserModel } from "../src/modules/auth/user.model";
 
 const testDatabaseUri =
   process.env.TEST_MONGODB_URI ??
@@ -48,17 +50,35 @@ const currentMovieListCacheKey = async (input: {
 
 let server: Server;
 let baseUrl: string;
+let userAccessToken: string;
+let adminAccessToken: string;
+
+type TestRequestInit = RequestInit & {
+  auth?: "user" | "admin" | "none";
+  accessToken?: string;
+};
 
 const requestJson = async (
   path: string,
-  init: RequestInit = {},
+  init: TestRequestInit = {},
 ): Promise<{ status: number; body: unknown }> => {
+  const { auth = "admin", accessToken, ...fetchInit } = init;
+  const headers = new Headers(fetchInit.headers);
+
+  headers.set("content-type", "application/json");
+
+  if (auth !== "none") {
+    headers.set(
+      "authorization",
+      `Bearer ${
+        accessToken ?? (auth === "user" ? userAccessToken : adminAccessToken)
+      }`,
+    );
+  }
+
   const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
+    ...fetchInit,
+    headers,
   });
   const responseText = await response.text();
 
@@ -130,6 +150,30 @@ beforeEach(async () => {
   await mongoose.connection.dropDatabase();
   await ensureDatabaseIndexes();
   await deleteKeysByPattern(movieListCachePattern());
+
+  const [user, admin] = await UserModel.create([
+    {
+      email: "test-user@example.com",
+      passwordHash: "test-password-hash",
+      role: "user",
+      isActive: true,
+    },
+    {
+      email: "test-admin@example.com",
+      passwordHash: "test-password-hash",
+      role: "admin",
+      isActive: true,
+    },
+  ]);
+
+  userAccessToken = createAccessToken({
+    userId: user._id.toString(),
+    role: user.role,
+  });
+  adminAccessToken = createAccessToken({
+    userId: admin._id.toString(),
+    role: admin.role,
+  });
 });
 
 after(async () => {
@@ -193,12 +237,19 @@ test("serves the landing page and Swagger documentation", async () => {
   assert.equal(typeof document.paths["/api/v1/directors/{id}"], "object");
   assert.equal(typeof document.paths["/api/v1/movies"], "object");
   assert.equal(typeof document.paths["/api/v1/movies/{id}"], "object");
+  assert.equal(typeof document.paths["/api/v1/auth/register"], "object");
+  assert.equal(typeof document.paths["/api/v1/auth/login"], "object");
+  assert.equal(typeof document.paths["/api/v1/auth/refresh"], "object");
+  assert.equal(typeof document.paths["/api/v1/auth/logout"], "object");
+  assert.equal(typeof document.paths["/api/v1/auth/me"], "object");
   assert.match(JSON.stringify(document), /PaginationMeta/);
   assert.match(JSON.stringify(document), /components\/parameters\/Page/);
   assert.match(JSON.stringify(document), /components\/parameters\/Limit/);
   assert.match(JSON.stringify(document), /components\/parameters\/MoviesPage/);
   assert.match(JSON.stringify(document), /components\/parameters\/MoviesLimit/);
   assert.match(JSON.stringify(document), /moviesMeta/);
+  assert.match(JSON.stringify(document), /bearerAuth/);
+  assert.match(JSON.stringify(document), /AuthSession/);
 
   for (const parameterName of [
     "Page",
@@ -701,6 +752,170 @@ test("invalidates expanded movie caches when a director is updated", async () =>
       .data.every((movie) => movie.director.firstName === "Sofia Maria"),
     true,
   );
+});
+
+test("registers, logs in and returns the current user", async () => {
+  const credentials = {
+    email: "new-user@example.com",
+    password: "correct-horse-battery-staple",
+  };
+  const registration = await requestJson("/api/v1/auth/register", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+
+  assert.equal(registration.status, 201);
+
+  const registrationData = (
+    registration.body as {
+      data: {
+        accessToken: string;
+        refreshToken: string;
+        user: { id: string; email: string; role: string };
+      };
+    }
+  ).data;
+
+  assert.equal(registrationData.user.email, credentials.email);
+  assert.equal(registrationData.user.role, "user");
+  assert.equal("passwordHash" in registrationData.user, false);
+
+  const me = await requestJson("/api/v1/auth/me", {
+    accessToken: registrationData.accessToken,
+  });
+  assert.equal(me.status, 200);
+  assert.equal(
+    (me.body as { data: { id: string } }).data.id,
+    registrationData.user.id,
+  );
+
+  const login = await requestJson("/api/v1/auth/login", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+  assert.equal(login.status, 200);
+
+  const duplicateRegistration = await requestJson("/api/v1/auth/register", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+  assert.equal(duplicateRegistration.status, 409);
+});
+
+test("rotates and revokes refresh tokens", async () => {
+  const registration = await requestJson("/api/v1/auth/register", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify({
+      email: "refresh-user@example.com",
+      password: "correct-horse-battery-staple",
+    }),
+  });
+  const firstSession = (
+    registration.body as {
+      data: { refreshToken: string; accessToken: string };
+    }
+  ).data;
+
+  const refresh = await requestJson("/api/v1/auth/refresh", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify({ refreshToken: firstSession.refreshToken }),
+  });
+  assert.equal(refresh.status, 200);
+
+  const secondSession = (
+    refresh.body as {
+      data: { refreshToken: string; accessToken: string };
+    }
+  ).data;
+  assert.notEqual(secondSession.refreshToken, firstSession.refreshToken);
+
+  const reusedToken = await requestJson("/api/v1/auth/refresh", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify({ refreshToken: firstSession.refreshToken }),
+  });
+  assert.equal(reusedToken.status, 401);
+
+  const logout = await requestJson("/api/v1/auth/logout", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify({ refreshToken: secondSession.refreshToken }),
+  });
+  assert.equal(logout.status, 204);
+
+  const revokedToken = await requestJson("/api/v1/auth/refresh", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify({ refreshToken: secondSession.refreshToken }),
+  });
+  assert.equal(revokedToken.status, 401);
+});
+
+test("protects writes and restricts deletes to admins", async () => {
+  const publicDirectors = await requestJson("/api/v1/directors", {
+    auth: "none",
+  });
+  assert.equal(publicDirectors.status, 200);
+
+  const directorInput = {
+    firstName: "Auth",
+    secondName: "Test",
+    birthDate: "1980-01-01",
+    bio: "A director used for authentication authorization tests.",
+  };
+
+  const unauthenticatedCreate = await requestJson("/api/v1/directors", {
+    auth: "none",
+    method: "POST",
+    body: JSON.stringify(directorInput),
+  });
+  assert.equal(unauthenticatedCreate.status, 401);
+
+  const createdDirector = await requestJson("/api/v1/directors", {
+    auth: "user",
+    method: "POST",
+    body: JSON.stringify(directorInput),
+  });
+  assert.equal(createdDirector.status, 201);
+
+  const directorId = resourceId(createdDirector.body);
+  const createdMovie = await requestJson("/api/v1/movies", {
+    auth: "user",
+    method: "POST",
+    body: JSON.stringify({
+      title: "Auth Test Movie",
+      description: "A movie used for authentication authorization tests.",
+      releaseDate: "2020-01-01",
+      genre: "Drama",
+      rating: 7.5,
+      imdbId: "tt9900001",
+      directorId,
+    }),
+  });
+  assert.equal(createdMovie.status, 201);
+
+  const movieId = resourceId(createdMovie.body);
+  const forbiddenDelete = await requestJson(`/api/v1/movies/${movieId}`, {
+    auth: "user",
+    method: "DELETE",
+  });
+  assert.equal(forbiddenDelete.status, 403);
+
+  const adminDelete = await requestJson(`/api/v1/movies/${movieId}`, {
+    auth: "admin",
+    method: "DELETE",
+  });
+  assert.equal(adminDelete.status, 204);
+
+  const invalidMe = await requestJson("/api/v1/auth/me", {
+    accessToken: "invalid-token",
+  });
+  assert.equal(invalidMe.status, 401);
 });
 
 test("paginates movie and director collection responses", async () => {

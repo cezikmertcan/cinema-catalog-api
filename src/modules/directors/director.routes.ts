@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authenticate, requireRole } from "../../middleware/authentication";
 import {
   createDirectorHandler,
   deleteDirectorHandler,
@@ -9,8 +10,13 @@ import {
 
 export const directorRouter = Router();
 
-directorRouter.post("/", createDirectorHandler);
+directorRouter.post("/", authenticate, createDirectorHandler);
 directorRouter.get("/", listDirectorsHandler);
 directorRouter.get("/:id", getDirectorHandler);
-directorRouter.patch("/:id", updateDirectorHandler);
-directorRouter.delete("/:id", deleteDirectorHandler);
+directorRouter.patch("/:id", authenticate, updateDirectorHandler);
+directorRouter.delete(
+  "/:id",
+  authenticate,
+  requireRole("admin"),
+  deleteDirectorHandler,
+);

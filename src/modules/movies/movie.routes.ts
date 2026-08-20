@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authenticate, requireRole } from "../../middleware/authentication";
 import {
   createMovieHandler,
   deleteMovieHandler,
@@ -9,8 +10,13 @@ import {
 
 export const movieRouter = Router();
 
-movieRouter.post("/", createMovieHandler);
+movieRouter.post("/", authenticate, createMovieHandler);
 movieRouter.get("/", listMoviesHandler);
 movieRouter.get("/:id", getMovieHandler);
-movieRouter.patch("/:id", updateMovieHandler);
-movieRouter.delete("/:id", deleteMovieHandler);
+movieRouter.patch("/:id", authenticate, updateMovieHandler);
+movieRouter.delete(
+  "/:id",
+  authenticate,
+  requireRole("admin"),
+  deleteMovieHandler,
+);

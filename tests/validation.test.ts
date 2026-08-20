@@ -16,6 +16,11 @@ import {
   parseUpdateMovie,
 } from "../src/modules/movies/movie.validation";
 import { MovieModel } from "../src/modules/movies/movie.model";
+import { UserModel } from "../src/modules/auth/user.model";
+import {
+  parseCredentials,
+  parseRefreshToken,
+} from "../src/modules/auth/auth.validation";
 
 const directorInput = {
   firstName: "Christopher",
@@ -187,6 +192,7 @@ test("parses and validates collection pagination", () => {
 test("declares compound indexes for collection and relation queries", () => {
   const directorIndexes = DirectorModel.schema.indexes();
   const movieIndexes = MovieModel.schema.indexes();
+  const userIndexes = UserModel.schema.indexes();
 
   assert.ok(
     directorIndexes.some(
@@ -208,5 +214,38 @@ test("declares compound indexes for collection and relation queries", () => {
         JSON.stringify(fields) ===
         JSON.stringify({ directorId: 1, releaseDate: -1, title: 1 }),
     ),
+  );
+  assert.ok(
+    userIndexes.some(
+      ([fields, options]) =>
+        JSON.stringify(fields) === JSON.stringify({ email: 1 }) &&
+        options?.unique === true,
+    ),
+  );
+});
+
+test("normalizes auth credentials and validates refresh tokens", () => {
+  assert.deepEqual(
+    parseCredentials({
+      email: "  USER@EXAMPLE.COM ",
+      password: "correct-horse-battery-staple",
+    }),
+    {
+      email: "user@example.com",
+      password: "correct-horse-battery-staple",
+    },
+  );
+
+  assert.equal(
+    parseRefreshToken({ refreshToken: "a".repeat(32) }),
+    "a".repeat(32),
+  );
+  assert.throws(
+    () => parseCredentials({ email: "user@example.com", password: "short" }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.statusCode === 400 &&
+      error.code === "VALIDATION_ERROR" &&
+      error.message === "password must be at least 12 characters.",
   );
 });

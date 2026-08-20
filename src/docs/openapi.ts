@@ -4,7 +4,7 @@ export const openApiDocument = {
     title: "Cinema Catalog API",
     version: "1.0.0",
     description:
-      "REST API for managing movies and directors with MongoDB persistence, Redis cache-aside reads, validation, pagination and OpenAPI documentation.",
+      "REST API for managing movies and directors with MongoDB persistence, Redis cache-aside reads, token-based authentication, validation, pagination and OpenAPI documentation.",
   },
   servers: [
     {
@@ -16,6 +16,10 @@ export const openApiDocument = {
     {
       name: "Health",
       description: "Application and dependency health checks",
+    },
+    {
+      name: "Auth",
+      description: "User registration, login and token lifecycle operations",
     },
     {
       name: "Directors",
@@ -89,6 +93,166 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/v1/auth/register": {
+      post: {
+        tags: ["Auth"],
+        summary: "Register a user",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/AuthCredentials",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "User registered and tokens issued.",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AuthSessionResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "409": {
+            $ref: "#/components/responses/ResourceConflict",
+          },
+          "503": {
+            $ref: "#/components/responses/AuthServiceUnavailable",
+          },
+        },
+      },
+    },
+    "/api/v1/auth/login": {
+      post: {
+        tags: ["Auth"],
+        summary: "Log in a user",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/AuthCredentials",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "User authenticated and tokens issued.",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AuthSessionResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "401": {
+            $ref: "#/components/responses/InvalidCredentials",
+          },
+          "503": {
+            $ref: "#/components/responses/AuthServiceUnavailable",
+          },
+        },
+      },
+    },
+    "/api/v1/auth/refresh": {
+      post: {
+        tags: ["Auth"],
+        summary: "Rotate a refresh token",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RefreshTokenInput",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Refresh token rotated and access token issued.",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AuthSessionResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "401": {
+            $ref: "#/components/responses/InvalidRefreshToken",
+          },
+          "503": {
+            $ref: "#/components/responses/AuthServiceUnavailable",
+          },
+        },
+      },
+    },
+    "/api/v1/auth/logout": {
+      post: {
+        tags: ["Auth"],
+        summary: "Revoke a refresh token",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RefreshTokenInput",
+              },
+            },
+          },
+        },
+        responses: {
+          "204": {
+            description: "Refresh token revoked.",
+          },
+          "400": {
+            $ref: "#/components/responses/ValidationError",
+          },
+          "503": {
+            $ref: "#/components/responses/AuthServiceUnavailable",
+          },
+        },
+      },
+    },
+    "/api/v1/auth/me": {
+      get: {
+        tags: ["Auth"],
+        summary: "Get the authenticated user",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Authenticated user returned.",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/UserDataResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
+          },
+        },
+      },
+    },
     "/api/v1/directors": {
       get: {
         tags: ["Directors"],
@@ -136,6 +300,7 @@ export const openApiDocument = {
       post: {
         tags: ["Directors"],
         summary: "Create a director",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -159,6 +324,9 @@ export const openApiDocument = {
           },
           "400": {
             $ref: "#/components/responses/ValidationError",
+          },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
           },
         },
       },
@@ -210,6 +378,7 @@ export const openApiDocument = {
       patch: {
         tags: ["Directors"],
         summary: "Update a director",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             $ref: "#/components/parameters/ResourceId",
@@ -242,11 +411,15 @@ export const openApiDocument = {
           "404": {
             $ref: "#/components/responses/DirectorNotFound",
           },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
+          },
         },
       },
       delete: {
         tags: ["Directors"],
-        summary: "Delete an unreferenced director",
+        summary: "Delete an unreferenced director as an admin",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             $ref: "#/components/parameters/ResourceId",
@@ -265,6 +438,12 @@ export const openApiDocument = {
           "409": {
             $ref: "#/components/responses/DirectorHasMovies",
           },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
+          },
+          "403": {
+            $ref: "#/components/responses/Forbidden",
+          },
         },
       },
     },
@@ -272,6 +451,7 @@ export const openApiDocument = {
       post: {
         tags: ["Movies"],
         summary: "Create a movie",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -301,6 +481,9 @@ export const openApiDocument = {
           },
           "409": {
             $ref: "#/components/responses/ResourceConflict",
+          },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
           },
         },
       },
@@ -369,6 +552,7 @@ export const openApiDocument = {
       patch: {
         tags: ["Movies"],
         summary: "Update a movie",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             $ref: "#/components/parameters/ResourceId",
@@ -404,11 +588,15 @@ export const openApiDocument = {
           "409": {
             $ref: "#/components/responses/ResourceConflict",
           },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
+          },
         },
       },
       delete: {
         tags: ["Movies"],
-        summary: "Delete a movie",
+        summary: "Delete a movie as an admin",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             $ref: "#/components/parameters/ResourceId",
@@ -424,11 +612,24 @@ export const openApiDocument = {
           "404": {
             $ref: "#/components/responses/MovieNotFound",
           },
+          "401": {
+            $ref: "#/components/responses/AuthenticationRequired",
+          },
+          "403": {
+            $ref: "#/components/responses/Forbidden",
+          },
         },
       },
     },
   },
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      },
+    },
     parameters: {
       ResourceId: {
         name: "id",
@@ -568,8 +769,177 @@ export const openApiDocument = {
           },
         },
       },
+      AuthenticationRequired: {
+        description: "A valid Bearer access token is required.",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      InvalidCredentials: {
+        description: "The supplied email or password is incorrect.",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      InvalidRefreshToken: {
+        description: "The refresh token is invalid, revoked or expired.",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      AuthServiceUnavailable: {
+        description: "The authentication cache is unavailable.",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      Forbidden: {
+        description: "The authenticated user does not have permission.",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
     },
     schemas: {
+      AuthCredentials: {
+        type: "object",
+        required: ["email", "password"],
+        additionalProperties: false,
+        properties: {
+          email: {
+            type: "string",
+            format: "email",
+            maxLength: 320,
+            example: "user@example.com",
+          },
+          password: {
+            type: "string",
+            format: "password",
+            minLength: 12,
+            maxLength: 128,
+            example: "correct-horse-battery-staple",
+          },
+        },
+      },
+      RefreshTokenInput: {
+        type: "object",
+        required: ["refreshToken"],
+        additionalProperties: false,
+        properties: {
+          refreshToken: {
+            type: "string",
+            minLength: 32,
+            maxLength: 512,
+          },
+        },
+      },
+      User: {
+        type: "object",
+        required: [
+          "id",
+          "email",
+          "role",
+          "isActive",
+          "createdAt",
+          "updatedAt",
+        ],
+        properties: {
+          id: {
+            type: "string",
+            example: "665f2c5b7c2f5c4f8f0d3333",
+          },
+          email: {
+            type: "string",
+            format: "email",
+            example: "user@example.com",
+          },
+          role: {
+            type: "string",
+            enum: ["user", "admin"],
+            example: "user",
+          },
+          isActive: {
+            type: "boolean",
+            example: true,
+          },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+          },
+          updatedAt: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+      },
+      AuthSession: {
+        type: "object",
+        required: [
+          "accessToken",
+          "refreshToken",
+          "tokenType",
+          "expiresIn",
+          "user",
+        ],
+        properties: {
+          accessToken: {
+            type: "string",
+          },
+          refreshToken: {
+            type: "string",
+          },
+          tokenType: {
+            type: "string",
+            enum: ["Bearer"],
+          },
+          expiresIn: {
+            type: "integer",
+            minimum: 1,
+            description: "Access token lifetime in seconds.",
+          },
+          user: {
+            $ref: "#/components/schemas/User",
+          },
+        },
+      },
+      AuthSessionResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            $ref: "#/components/schemas/AuthSession",
+          },
+        },
+      },
+      UserDataResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            $ref: "#/components/schemas/User",
+          },
+        },
+      },
       DirectorInput: {
         type: "object",
         required: ["firstName", "secondName", "birthDate", "bio"],

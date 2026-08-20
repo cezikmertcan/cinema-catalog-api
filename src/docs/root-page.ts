@@ -18,7 +18,7 @@ export const rootPage = `<!doctype html>
   <body>
     <main>
       <h1>Cinema Catalog API</h1>
-      <p>REST API for managing movies and directors.</p>
+      <p>REST API for movies, directors and token-based authentication.</p>
       <nav aria-label="API resources">
         <a href="/docs">OpenAPI documentation</a>
         <a href="/openapi.json">OpenAPI JSON</a>

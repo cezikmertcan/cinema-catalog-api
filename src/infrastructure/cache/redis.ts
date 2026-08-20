@@ -107,6 +107,18 @@ const withCache = async <T>(
   }
 };
 
+const withRequiredCache = async <T>(
+  operation: (redisClient: RedisClient) => Promise<T>,
+): Promise<T> => {
+  const activeClient = client;
+
+  if (activeClient?.isReady !== true) {
+    throw new Error("Redis connection is not ready.");
+  }
+
+  return operation(activeClient);
+};
+
 export const getJson = async <T>(key: string): Promise<T | null> => {
   return withCache(async (redisClient) => {
     const value = await redisClient.get(key);
@@ -119,6 +131,18 @@ export const getJson = async <T>(key: string): Promise<T | null> => {
   }, null);
 };
 
+export const getJsonRequired = async <T>(key: string): Promise<T | null> => {
+  return withRequiredCache(async (redisClient) => {
+    const value = await redisClient.get(key);
+
+    if (value === null) {
+      return null;
+    }
+
+    return JSON.parse(value) as T;
+  });
+};
+
 export const setJson = async <T>(
   key: string,
   value: T,
@@ -127,6 +151,16 @@ export const setJson = async <T>(
   await withCache(async (redisClient) => {
     await redisClient.set(key, JSON.stringify(value), { EX: ttlSeconds });
   }, undefined);
+};
+
+export const setJsonRequired = async <T>(
+  key: string,
+  value: T,
+  ttlSeconds: number,
+): Promise<void> => {
+  await withRequiredCache(async (redisClient) => {
+    await redisClient.set(key, JSON.stringify(value), { EX: ttlSeconds });
+  });
 };
 
 export const getOrInitializeInteger = async (
@@ -156,6 +190,29 @@ export const deleteKey = async (key: string): Promise<void> => {
   await withCache(async (redisClient) => {
     await redisClient.del(key);
   }, undefined);
+};
+
+export const deleteKeyRequired = async (key: string): Promise<void> => {
+  await withRequiredCache(async (redisClient) => {
+    await redisClient.del(key);
+  });
+};
+
+export const rotateJsonKey = async <T>(input: {
+  previousKey: string;
+  nextKey: string;
+  value: T;
+  ttlSeconds: number;
+}): Promise<void> => {
+  await withRequiredCache(async (redisClient) => {
+    await redisClient
+      .multi()
+      .set(input.nextKey, JSON.stringify(input.value), {
+        EX: input.ttlSeconds,
+      })
+      .del(input.previousKey)
+      .exec();
+  });
 };
 
 export const deleteKeysByPattern = async (pattern: string): Promise<void> => {

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import type { DependencyHealth } from "../../shared/health/dependency-health";
 import { DirectorModel } from "../../modules/directors/director.model";
 import { MovieModel } from "../../modules/movies/movie.model";
+import { UserModel } from "../../modules/auth/user.model";
 
 let connectionPromise: Promise<void> | undefined;
 
@@ -9,6 +10,7 @@ export const ensureDatabaseIndexes = async (): Promise<void> => {
   await Promise.all([
     DirectorModel.createIndexes(),
     MovieModel.createIndexes(),
+    UserModel.createIndexes(),
   ]);
 };
 
